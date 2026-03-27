@@ -10,4 +10,6 @@ This achieves approximately 100× faster contraction performance than the native
 
 Additional symbolic operations will be ported to Go in future versions.
 
+For a more detailed documentation, including architecture diagrams, data structures, and the processing pipeline, please refer to [AI-DOCS.md](AI-DOCS.md). This content has been human-reviewed and provides a fuller and more descriptive overview of the system.
+
 Boris Latosh provided the detailed explanation of the contraction procedure and performed extensive testing.
