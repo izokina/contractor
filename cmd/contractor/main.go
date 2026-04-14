@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json/jsontext"
 	"flag"
 	"fmt"
 	"io"
@@ -16,29 +17,29 @@ import (
 )
 
 func runPipeline(in io.Reader, out io.Writer, poolSize int) {
-	rawItems := external.ReadExpression(in)
+	parser := parse.NewParser()
+	cin, errFunc := parser.ParseJson(jsontext.NewDecoder(in))
 	merger := merge.NewMerger()
 
 	wg := &sync.WaitGroup{}
-	wg.Add(poolSize)
 	for range poolSize {
-		go func() {
-			defer wg.Done()
-			parser := parse.NewParser()
+		wg.Go(func() {
 			contractor := contract.NewContractor()
-			for item := range rawItems {
-				term, err := parser.ParseAndExpand(item)
-				if err != nil {
-					log.Fatal(err)
-				}
+			for term := range cin {
 				term = contractor.ContractAndNormalize(term)
-				err = merger.Add(term)
+				err := merger.Add(term)
 				if err != nil {
 					log.Fatal(err)
 				}
 			}
-		}()
+		})
 	}
+
+	err := errFunc()
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	wg.Wait()
 
 	if err := external.Dump(merger.Flush(), out); err != nil {

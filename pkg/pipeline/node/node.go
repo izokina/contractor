@@ -32,7 +32,7 @@ type Pair struct {
 
 type Term struct {
 	Pairs   []Pair
-	Scalars [][]any
+	Scalars []any
 }
 
 func ParseObject(source any) (Object, bool) {

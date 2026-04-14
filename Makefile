@@ -1,2 +1,2 @@
 build:
-	@go build -o bin/ ./cmd/contractor
+	@GOEXPERIMENT=jsonv2 go build -o bin/ ./cmd/contractor

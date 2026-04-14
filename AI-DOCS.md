@@ -31,59 +31,57 @@ flowchart LR
         STDIN["stdin (JSON)"]
     end
     subgraph Workers
-        P[Parser] --> C[Contractor]
+        C[Contractor]
     end
     subgraph Output
         STDOUT["stdout (JSON)"]
     end
-    STDIN --> R[ReadExpression] --> P
+    STDIN --> P[Parser]
+    P --> C
     C --> M[Merger]
     M --> D[Dump] --> STDOUT
-    R -.-> channel -.-> P
     M -.-> mutex -.-> M
 ```
 
 ```mermaid
 flowchart TB
+    subgraph Shared Parser
+        P[Parser]
+    end
     subgraph Worker 1
-        P1[Parser] --> C1[Contractor]
+        C1[Contractor]
     end
     subgraph Worker 2
-        P2[Parser] --> C2[Contractor]
+        C2[Contractor]
     end
-    subgraph Shared
+    subgraph Shared Merger
         M[Merger]
     end
+    P --> C1
+    P --> C2
     C1 --> M
     C2 --> M
 ```
 
-The system utilizes a fixed-size worker pool (default: `runtime.NumCPU()`). Each worker operates independently with its own `Parser` and `Contractor` (minimizing contention), while sharing a single mutex-protected `Merger`.
+The system utilizes a fixed-size worker pool (default: `runtime.NumCPU()`). A single shared `Parser` streams parsed terms to all workers. Each worker operates independently with its own `Contractor` (minimizing contention), while sharing a single mutex-protected `Merger`.
 
 ---
 
 ## Processing Pipeline
 
-The pipeline consists of 5 stages executed by parallel workers:
+The pipeline consists of 4 stages executed by parallel workers:
 
-### 1. Input (`external.ReadExpression`)
+### 1. Parse (`parse.Parser.ParseJson`)
 
-Streams JSON terms from stdin:
-- Validates the JSON starts with `[Plus, ...]`
-- Uses `json.Decoder` with `UseNumber()` for precise number handling
-- Streams each term individually through a channel
-
-This approach processes arbitrarily large expressions without loading everything into memory.
-
-### 2. Parse (`parse.Parser`)
-
-Converts raw JSON terms into internal `node.Term` structures:
-- **Object parsing**: Converts JSON array to `Object` with name and arguments
-- **Times handling**: Recursively processes multiplication arguments
-- **Power expansion**: Expands `Power[expr, n]` into n copies of expr
+Streams and parses JSON expressions from stdin into internal `node.Term` structures:
+- Uses `jsontext.Decoder` for incremental JSON parsing (requires `GOEXPERIMENT=jsonv2`)
+- Handles `Plus` (addition), `Times` (multiplication), `Power` (exponentiation), and `Pair` objects
+- **Times handling**: Multiplies subexpressions using lazy evaluation with `termSource`
+- **Power expansion**: Expands `Power[expr, n]` into n multiplications of expr
 - **Pair extraction**: Identifies `Pair[LorentzIndex, ...]` and `Pair[Momentum, ...]`
+- Streams terms through channels for memory-efficient processing of large expressions
 
-### 3. Contract (`contract.Contractor`)
+### 2. Contract (`contract.Contractor`)
 
 Performs index contraction via `ContractAndNormalize()`:
 1. Collects all Lorentz indices from pairs
@@ -91,14 +89,15 @@ Performs index contraction via `ContractAndNormalize()`:
 3. Contracts: identical Lorentz indices → scalar (4 or D), identical momenta → pass through
 4. Sorts remaining pairs by signature for deterministic output
 
-### 4. Merge (`merge.Merger`)
+### 3. Merge (`merge.Merger`)
 
 Groups contracted terms by remaining index structure:
+- Uses `termSet` structure containing pairs and scalar lists
 - Computes signature by JSON-marshaling pairs
 - Terms with identical structure are grouped together
-- Accumulates scalar coefficients
+- Accumulates scalar coefficient lists from each term
 
-### 5. Output (`external.Dump`)
+### 4. Output (`external.Dump`)
 
 Serializes results as JSON:
 - Single term → output directly
@@ -156,17 +155,23 @@ classDiagram
     }
     class Term {
         []Pair Pairs
+        []any Scalars
+    }
+    class termSet {
+        []Pair Pairs
         [][]any Scalars
     }
     Object --> Pair : used in
     Pair --> Term : contained in
+    termSet --> Merger : stored in terms
 ```
 
 - **Object**: Represents any Mathematica function call (`Name` + `Args` + `Source`)
 - **LorentzIndex**: Spacetime index with optional D-flag for derivatives
 - **Momentum**: Four-momentum vector
 - **Pair**: Container for Lorentz indices and/or momenta
-- **Term**: Complete expression (product of pairs times scalars)
+- **Term**: Complete expression (product of pairs times scalar list)
+- **termSet**: Merger's internal structure for grouping terms with multiple scalar coefficient lists
 
 ---
 
@@ -175,10 +180,10 @@ classDiagram
 | Package | Purpose |
 |---------|---------|
 | `cmd/contractor` | Entry point, thread pool management |
-| `pkg/external` | JSON I/O (`ReadExpression`, `Dump`) |
-| `pkg/pipeline/parse` | Expression parsing, Power expansion |
+| `pkg/external` | JSON output (`Dump`) |
+| `pkg/pipeline/parse` | Streaming JSON parsing with `jsontext`, handles `Plus`/`Times`/`Power`/`Pair` |
 | `pkg/pipeline/contract` | Core index contraction logic |
-| `pkg/pipeline/merge` | Term grouping by signature |
+| `pkg/pipeline/merge` | Term grouping by signature using `termSet` |
 | `pkg/pipeline/node` | Data structures (`Object`, `Term`, `Pair`, etc.) |
 | `pkg/literal` | Mathematica function name constants |
 

@@ -10,14 +10,19 @@ import (
 	"github.com/izokina/contractor/pkg/pipeline/node"
 )
 
+type termSet struct {
+	Pairs   []node.Pair
+	Scalars [][]any
+}
+
 type Merger struct {
-	terms map[string]node.Term
+	terms map[string]termSet
 	mu    sync.Mutex
 }
 
 func NewMerger() *Merger {
 	return &Merger{
-		terms: make(map[string]node.Term),
+		terms: make(map[string]termSet),
 	}
 }
 
@@ -33,7 +38,7 @@ func (m *Merger) Add(term node.Term) error {
 
 	oldExpr, _ := m.terms[signature]
 	oldExpr.Pairs = term.Pairs
-	oldExpr.Scalars = append(oldExpr.Scalars, term.Scalars...)
+	oldExpr.Scalars = append(oldExpr.Scalars, term.Scalars)
 	m.terms[signature] = oldExpr
 	return nil
 }

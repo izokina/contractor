@@ -11,8 +11,8 @@ import (
 type Contractor struct {
 	indexPairs map[string]node.Pair
 
-	scalar []any
-	pairs  []node.Pair
+	scalars []any
+	pairs   []node.Pair
 
 	lorentz  []node.LorentzIndex
 	momentum []node.Momentum
@@ -29,7 +29,7 @@ func NewContractor() *Contractor {
 func (c *Contractor) ContractAndNormalize(term node.Term) node.Term {
 	c.mu.Lock()
 
-	c.scalar = c.scalar[:0]
+	c.scalars = c.scalars[:0]
 	c.pairs = c.pairs[:0]
 
 	for _, pair := range term.Pairs {
@@ -42,14 +42,10 @@ func (c *Contractor) ContractAndNormalize(term node.Term) node.Term {
 		}
 	}
 	term.Pairs = append(make([]node.Pair, 0, len(c.pairs)), c.pairs...)
-	if len(c.scalar) != 0 {
-		newScalars := make([][]any, len(term.Scalars))
-		for i, scalar := range term.Scalars {
-			newScalar := make([]any, 0, len(scalar)+len(c.scalar))
-			newScalar = append(newScalar, scalar...)
-			newScalar = append(newScalar, c.scalar...)
-			newScalars[i] = newScalar
-		}
+	if len(c.scalars) != 0 {
+		newScalars := make([]any, 0, len(term.Scalars)+len(c.scalars))
+		newScalars = append(newScalars, term.Scalars...)
+		newScalars = append(newScalars, c.scalars...)
 		term.Scalars = newScalars
 	}
 
@@ -107,9 +103,9 @@ func (c *Contractor) addPair(pair node.Pair) {
 
 	if len(c.lorentz) == 2 && c.lorentz[0].Signature == c.lorentz[1].Signature {
 		if c.lorentz[0].HasD {
-			c.scalar = append(c.scalar, "D")
+			c.scalars = append(c.scalars, "D")
 		} else {
-			c.scalar = append(c.scalar, 4)
+			c.scalars = append(c.scalars, 4)
 		}
 		return
 	}
