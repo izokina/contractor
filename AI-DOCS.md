@@ -357,14 +357,145 @@ make build
 ./contractor -threads 4 < input.json > output.json
 ```
 
-**Integration with Mathematica:**
+## Integration with Mathematica
+
+The contractor is intended to be called from Mathematica by sending a FeynCalc expression to the external executable in Mathematica's `ExpressionJSON` format and then importing the returned JSON expression back into Mathematica.
+
+The recommended integration uses `StartProcess`, explicit standard streams, and `ExpressionJSON`. This avoids shell-dependent behavior and gives access to `stderr` and the process exit code, which is essential for diagnosing malformed input or contractor-side errors.
+
+The following helper will be included in the next version of FeynGrav. It can also be used as a standalone Mathematica wrapper, because it does not rely on any special FeynGrav functionality apart from the path variable `packageDirectory` and the availability of FeynCalc's `FeynCalcInternal` conversion.
+
 ```mathematica
-SetDirectory[NotebookDirectory[]];
-stream = OpenWrite["!./contractor -threads 4"];
-WriteString[stream, ExportString[expr, "ExpressionJSON"]];
-Close[stream];
-result = ImportString[%, "ExpressionJSON"];
+FeynGravContractor[theInput_] := Module[
+	{
+	(* Process object returned by StartProcess *)
+	proc,
+	
+	(* Streams connected to the external process *)
+	stdin, stdout, stderr,
+	
+	(* JSON request sent to contractor *)
+	jsonIn,
+	
+	(* JSON reply and diagnostics received from contractor *)
+	jsonOut, errOut,
+	
+	(* Association with process metadata, e.g. exit code *)
+	info,
+	
+	(* Full path to the contractor executable *)
+	contractorPath,
+	
+	(* Parsed byte offset from contractor error message, if available *)
+	offset
+	},
+	
+	(* Build the path to the contractor executable.
+	FileNameJoin is safer than manual string concatenation. *)
+	contractorPath = FileNameJoin[ {ParentDirectory[packageDirectory], "contractor", "bin", "contractor"} ];
+	
+	(* Convert the Wolfram expression to ExpressionJSON.
+	Compact -> True avoids unnecessary whitespace and makes the payload
+	smaller and easier for the Go side to process. *)
+	jsonIn = ExportString[ FeynCalcInternal[theInput], "ExpressionJSON", "Compact" -> True];
+	
+	(* Sanity check on the Mathematica side:
+	verify that the generated JSON can be imported back before sending it
+	to the external program. If this fails, the problem is in the export
+	stage rather than in the contractor executable. *)
+	Quiet @ Check[
+		ImportString[jsonIn, "ExpressionJSON"],
+		Print["Mathematica produced invalid ExpressionJSON before sending it."];
+		Return[$Failed]
+	];
+	
+	
+	(* Start the contractor as an external process.
+	The list form {contractorPath} avoids shell interpretation. *)
+	proc = StartProcess[{contractorPath}];
+	
+	(* Obtain the three standard streams of the subprocess. *)
+	stdin  = ProcessConnection[proc, "StandardInput"];
+	stdout = ProcessConnection[proc, "StandardOutput"];
+	stderr = ProcessConnection[proc, "StandardError"];
+	
+	(* Explicitly use UTF-8 for text written to the process.
+	This is important because JSON is expected to be UTF-8 on the Go side. *)
+	SetOptions[stdin, CharacterEncoding -> "UTF-8"];
+	
+	(* Send the JSON request to the contractor.
+	We append a newline as an additional framing convenience for the Go side.
+	After writing, we MUST close stdin so that the contractor sees EOF and
+	knows that the full request has been sent. *)
+	WriteString[stdin, jsonIn <> "\n"];
+	Close[stdin];
+	
+	(* Read the complete reply from stdout and any diagnostics from stderr.
+	ReadString blocks until the stream is closed or the process exits. *)
+	jsonOut = ReadString[stdout];
+	errOut  = ReadString[stderr];
+	
+	(* Collect process metadata, especially the exit code. *)
+	info = ProcessInformation[proc];
+	
+	(* If the contractor returned a nonzero exit code, print diagnostics and
+	return $Failed instead of attempting to parse invalid output. *)
+	If[Lookup[info, ExitCode, 0] =!= 0,
+		Print["contractor stderr: ", errOut];
+		Print["process info: ", info];
+		
+		(* Try to extract the byte offset mentioned in the contractor error
+		message. This is useful when debugging malformed JSON payloads. *)
+		offset = Quiet @ Check[
+			ToExpression @ First @ StringCases[
+				errOut,
+				RegularExpression["offset\\s+(\\d+)"] -> "$1"
+			],
+			Missing["NotFound"]
+		];
+		
+		(* If an offset was found, print a short fragment of the input JSON
+		around the failing position to simplify debugging. *)
+		If[IntegerQ[offset],
+			Print["Input near failing offset: "];
+			Print @ StringTake[
+				jsonIn,
+				{
+					Max[1, offset - 80],
+					Min[StringLength[jsonIn], offset + 80]
+				}
+			];
+		];
+		
+		
+		Return[$Failed];
+	];
+	
+	(* Parse the contractor output back into a Wolfram expression.
+	This is the normal successful return value of the function. *)
+	ImportString[jsonOut, "ExpressionJSON"]
+];
 ```
+
+The wrapper performs the following steps:
+
+1. Converts the input expression to FeynCalc's internal representation with `FeynCalcInternal`.
+2. Exports the internal expression to compact `ExpressionJSON`.
+3. Checks that Mathematica can import the generated JSON before sending it to the contractor.
+4. Starts the contractor executable using `StartProcess` without invoking a shell.
+5. Writes the JSON request to the contractor's standard input using UTF-8 encoding.
+6. Closes standard input so that the contractor receives EOF and starts processing the complete request.
+7. Reads the complete standard output and standard error streams.
+8. Checks the process exit code and prints diagnostics if the contractor fails.
+9. Imports the contractor output back from `ExpressionJSON` into a Wolfram expression.
+
+To use this wrapper outside FeynGrav, replace the definition of `contractorPath` with the absolute path to the compiled contractor executable. For example:
+
+```mathematica
+contractorPath = "/absolute/path/to/contractor";
+```
+
+The rest of the function can be used unchanged, provided that FeynCalc is loaded and the contractor executable accepts and returns expressions in the expected `ExpressionJSON` format.
 
 ---
 
