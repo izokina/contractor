@@ -1,0 +1,829 @@
+[
+  {
+    "name": "01-cross-pair-merge",
+    "input": ["Times",
+      ["Pair", ["LorentzIndex", "a", "D"], ["LorentzIndex", "b", "D"]],
+      ["Pair", ["LorentzIndex", "a", "D"], ["LorentzIndex", "c", "D"]]
+    ],
+    "outputs": [
+      ["Pair", ["LorentzIndex", "b", "D"], ["LorentzIndex", "c", "D"]]
+    ]
+  },
+  {
+    "name": "02-chained-contraction",
+    "input": ["Times",
+      ["Pair", ["LorentzIndex", "a", "D"], ["LorentzIndex", "b", "D"]],
+      ["Pair", ["LorentzIndex", "b", "D"], ["LorentzIndex", "c", "D"]],
+      ["Pair", ["LorentzIndex", "c", "D"], ["LorentzIndex", "a", "D"]]
+    ],
+    "outputs": [
+      "D"
+    ]
+  },
+  {
+    "name": "03-partial-contraction",
+    "input": ["Times",
+      ["Pair", ["LorentzIndex", "a", "D"], ["LorentzIndex", "b", "D"]],
+      ["Pair", ["LorentzIndex", "a", "D"], ["LorentzIndex", "c", "D"]],
+      ["Pair", ["LorentzIndex", "d", "D"], ["LorentzIndex", "e", "D"]]
+    ],
+    "outputs": [
+      ["Times",
+        ["Pair", ["LorentzIndex", "b", "D"], ["LorentzIndex", "c", "D"]],
+        ["Pair", ["LorentzIndex", "d", "D"], ["LorentzIndex", "e", "D"]]
+      ]
+    ]
+  },
+  {
+    "name": "04-contracted-scalar-arithmetic",
+    "input": ["Plus",
+      ["Times", 2, ["Pair", ["LorentzIndex", "mu"], ["LorentzIndex", "mu"]]],
+      ["Times", 3, ["Pair", ["LorentzIndex", "nu"], ["LorentzIndex", "nu"]]]
+    ],
+    "outputs": [
+      20
+    ]
+  },
+  {
+    "name": "05-long-open-chain",
+    "input": ["Times",
+      ["Pair", ["LorentzIndex", "a", "D"], ["LorentzIndex", "b", "D"]],
+      ["Pair", ["LorentzIndex", "b", "D"], ["LorentzIndex", "c", "D"]],
+      ["Pair", ["LorentzIndex", "c", "D"], ["LorentzIndex", "d", "D"]],
+      ["Pair", ["LorentzIndex", "d", "D"], ["LorentzIndex", "e", "D"]]
+    ],
+    "outputs": [
+      ["Pair", ["LorentzIndex", "a", "D"], ["LorentzIndex", "e", "D"]]
+    ]
+  },
+  {
+    "name": "06-mixed-hasd-self-pair",
+    "input": ["Pair", ["LorentzIndex", "mu", "D"], ["LorentzIndex", "mu"]],
+    "outputs": [
+      ["Pair", ["LorentzIndex", "mu", "D"], ["LorentzIndex", "mu"]]
+    ]
+  },
+  {
+    "name": "07-triple-shared-index",
+    "input": ["Times",
+      ["Pair", ["LorentzIndex", "a", "D"], ["LorentzIndex", "b", "D"]],
+      ["Pair", ["LorentzIndex", "a", "D"], ["LorentzIndex", "c", "D"]],
+      ["Pair", ["LorentzIndex", "a", "D"], ["LorentzIndex", "d", "D"]]
+    ],
+    "outputs": [
+      ["Times",
+        ["Pair", ["LorentzIndex", "a", "D"], ["LorentzIndex", "d", "D"]],
+        ["Pair", ["LorentzIndex", "b", "D"], ["LorentzIndex", "c", "D"]]
+      ]
+    ]
+  },
+  {
+    "name": "08-power-contraction",
+    "input": ["Times",
+      ["Power", ["Pair", ["LorentzIndex", "m", "D"], ["LorentzIndex", "n", "D"]], 2],
+      ["Pair", ["LorentzIndex", "m", "D"], ["Momentum", "p", "D"]]
+    ],
+    "outputs": [
+      ["Times", "D",
+        ["Pair", ["LorentzIndex", "m", "D"], ["Momentum", "p", "D"]]
+      ]
+    ]
+  },
+  {
+    "name": "09-power-zero-base",
+    "input": ["Power", 0, 4],
+    "outputs": [
+      0
+    ]
+  },
+  {
+    "name": "10-composite-momentum",
+    "input": ["Times",
+      ["Pair",
+        ["LorentzIndex", "mu", "D"],
+        ["Momentum",
+          ["Plus", ["Times", -1, "p1"], ["Times", -1, "p2"]],
+          "D"
+        ]
+      ],
+      ["Pair", ["LorentzIndex", "mu", "D"], ["Momentum", "p3", "D"]]
+    ],
+    "outputs": [
+      ["Pair",
+        ["Momentum", "p3", "D"],
+        ["Momentum",
+          ["Plus", ["Times", -1, "p1"], ["Times", -1, "p2"]],
+          "D"
+        ]
+      ]
+    ]
+  },
+  {
+    "name": "11-plus-in-times",
+    "input": ["Times",
+      ["Plus", ["Rational", 1, 4], ["Times", -1, ["Rational", 1, 8]]],
+      ["Pair", ["LorentzIndex", "mu", "D"], ["LorentzIndex", "nu", "D"]]
+    ],
+    "outputs": [
+      ["Times",
+        ["Rational", 1, 8],
+        ["Pair", ["LorentzIndex", "mu", "D"], ["LorentzIndex", "nu", "D"]]
+      ]
+    ]
+  },
+  {
+    "name": "12-power-of-sum",
+    "input": ["Power", ["Plus", 1, "D"], 2],
+    "outputs": [
+      ["Plus", 1, ["Times", 2, "D"], ["Times", "D", "D"]]
+    ]
+  },
+  {
+    "name": "13-power-four",
+    "input": ["Power", "κ", 4],
+    "outputs": [
+      ["Times", "κ", "κ", "κ", "κ"]
+    ]
+  },
+  {
+    "name": "14-power-plus-cubed",
+    "input": ["Power", ["Plus", "a", "b"], 3],
+    "outputs": [
+      ["Plus",
+        ["Times", "a", "a", "a"],
+        ["Times", 3, "a", "a", "b"],
+        ["Times", 3, "a", "b", "b"],
+        ["Times", "b", "b", "b"]
+      ]
+    ]
+  },
+  {
+    "name": "15-plus-folds-to-int",
+    "input": ["Plus", 2, 3],
+    "outputs": [
+      5
+    ]
+  },
+  {
+    "name": "16-power-symbolic-exponent",
+    "input": ["Power", "a", "n"],
+    "outputs": [
+      ["Power", "a", "n"]
+    ]
+  },
+  {
+    "name": "17-algebraic-identity-binomial",
+    "input": ["Plus",
+      ["Times", "a", "a"],
+      ["Times", 2, "a", "b"],
+      ["Times", "b", "b"],
+      ["Times", -1, ["Power", ["Plus", "a", "b"], 2]]
+    ],
+    "outputs": [
+      0
+    ]
+  },
+  {
+    "name": "18-times-neg-one-times-symbol",
+    "input": ["Times", -1, "κ"],
+    "outputs": [
+      ["Times", -1, "κ"]
+    ]
+  },
+  {
+    "name": "19-coefficient-sum",
+    "input": ["Plus",
+      ["Times", 3, ["Pair", ["LorentzIndex", "mu", "D"], ["LorentzIndex", "nu", "D"]]],
+      ["Times", -1, ["Pair", ["LorentzIndex", "nu", "D"], ["LorentzIndex", "mu", "D"]]]
+    ],
+    "outputs": [
+      ["Times", 2,
+        ["Pair", ["LorentzIndex", "mu", "D"], ["LorentzIndex", "nu", "D"]]
+      ]
+    ]
+  },
+  {
+    "name": "20-string-symbol-grouping",
+    "input": ["Plus",
+      ["Times", "D", ["Rational", 1, 4],
+        ["Pair", ["LorentzIndex", "m", "D"], ["LorentzIndex", "n", "D"]]
+      ],
+      ["Times", "D", ["Rational", -1, 8],
+        ["Pair", ["LorentzIndex", "m", "D"], ["LorentzIndex", "n", "D"]]
+      ],
+      ["Times", ["Rational", 1, 2],
+        ["Pair", ["LorentzIndex", "m", "D"], ["LorentzIndex", "n", "D"]]
+      ]
+    ],
+    "outputs": [
+      ["Times",
+        ["Plus", ["Rational", 1, 2], ["Times", ["Rational", 1, 8], "D"]],
+        ["Pair", ["LorentzIndex", "m", "D"], ["LorentzIndex", "n", "D"]]
+      ]
+    ]
+  },
+  {
+    "name": "21-d-sig-cancellation",
+    "input": ["Plus",
+      ["Times", 3, "D",
+        ["Pair", ["LorentzIndex", "a", "D"], ["LorentzIndex", "a", "D"]]
+      ],
+      ["Times", -3,
+        ["Pair", ["LorentzIndex", "b", "D"], ["LorentzIndex", "b", "D"]],
+        ["Pair", ["LorentzIndex", "c", "D"], ["LorentzIndex", "c", "D"]]
+      ]
+    ],
+    "outputs": [
+      0
+    ]
+  },
+  {
+    "name": "22-multi-term-cancellation",
+    "input": ["Plus",
+      ["Times", 1, "κ"],
+      ["Times", 2, "κ"],
+      ["Times", 3, "κ"],
+      ["Times", -4, "κ"],
+      ["Times", -2, "κ"]
+    ],
+    "outputs": [
+      0
+    ]
+  },
+  {
+    "name": "23-rational-reducible-to-int",
+    "input": ["Rational", 6, 3],
+    "outputs": [
+      2
+    ]
+  },
+  {
+    "name": "24-rational-negative-denom",
+    "input": ["Rational", 3, -7],
+    "outputs": [
+      ["Rational", -3, 7]
+    ]
+  },
+  {
+    "name": "25-complex-zero-imag",
+    "input": ["Complex", 5, 0],
+    "outputs": [
+      5
+    ]
+  },
+  {
+    "name": "26-complex-int-rational",
+    "input": ["Times",
+      ["Complex", 2, ["Rational", 1, 3]],
+      ["Pair", ["LorentzIndex", "mu", "D"], ["LorentzIndex", "mu", "D"]]
+    ],
+    "outputs": [
+      ["Times", ["Complex", 2, ["Rational", 1, 3]], "D"]
+    ]
+  },
+  {
+    "name": "27-fraction-arithmetic",
+    "input": ["Times",
+      ["Plus", ["Rational", 1, 2], ["Rational", 1, 3]],
+      12
+    ],
+    "outputs": [
+      10
+    ]
+  },
+  {
+    "name": "28-rational-cascade",
+    "input": ["Times",
+      ["Rational", 1, 2],
+      ["Rational", 1, 2],
+      ["Rational", 1, 2],
+      ["Rational", 1, 2],
+      ["Pair", ["LorentzIndex", "mu", "D"], ["LorentzIndex", "nu", "D"]]
+    ],
+    "outputs": [
+      ["Times",
+        ["Rational", 1, 16],
+        ["Pair", ["LorentzIndex", "mu", "D"], ["LorentzIndex", "nu", "D"]]
+      ]
+    ]
+  },
+  {
+    "name": "29-rational-symbolic-numer",
+    "input": ["Rational", "x", 4],
+    "outputs": [
+      ["Rational", "x", 4]
+    ]
+  },
+  {
+    "name": "30-float-times-symbol",
+    "input": ["Times", 0.5, "κ"],
+    "outputs": [
+      ["Times", "κ", 0.5]
+    ]
+  },
+  {
+    "name": "31-complex-mul-conjugate",
+    "input": ["Times", ["Complex", 1, 1], ["Complex", 1, -1]],
+    "outputs": [
+      2
+    ]
+  },
+  {
+    "name": "32-rational-mul-needs-gcd",
+    "input": ["Times", ["Rational", 2, 3], ["Rational", 3, 4]],
+    "outputs": [
+      ["Rational", 1, 2]
+    ]
+  },
+  {
+    "name": "33-rational-mul-collapses-to-int",
+    "input": ["Times", ["Rational", 2, 3], ["Rational", 3, 2]],
+    "outputs": [
+      1
+    ]
+  },
+  {
+    "name": "34-power-pair-cubed",
+    "input": ["Power",
+      ["Pair", ["LorentzIndex", "m", "D"], ["LorentzIndex", "n", "D"]],
+      3
+    ],
+    "outputs": [
+      ["Times", "D",
+        ["Pair", ["LorentzIndex", "m", "D"], ["LorentzIndex", "n", "D"]]
+      ]
+    ]
+  },
+  {
+    "name": "35-zero-distribution",
+    "input": ["Times", ["Plus", 1, -1], "κ"],
+    "outputs": [
+      0
+    ]
+  },
+  {
+    "name": "36-three-pair-keys",
+    "input": ["Plus",
+      ["Times",
+        ["Pair", ["LorentzIndex", "a", "D"], ["LorentzIndex", "b", "D"]],
+        ["Pair", ["LorentzIndex", "a", "D"], ["LorentzIndex", "p", "D"]]
+      ],
+      ["Times",
+        ["Pair", ["LorentzIndex", "c", "D"], ["LorentzIndex", "d", "D"]],
+        ["Pair", ["LorentzIndex", "c", "D"], ["LorentzIndex", "q", "D"]]
+      ],
+      ["Times",
+        ["Pair", ["LorentzIndex", "e", "D"], ["LorentzIndex", "f", "D"]],
+        ["Pair", ["LorentzIndex", "e", "D"], ["LorentzIndex", "r", "D"]]
+      ]
+    ],
+    "outputs": [
+      ["Plus",
+        ["Pair", ["LorentzIndex", "b", "D"], ["LorentzIndex", "p", "D"]],
+        ["Pair", ["LorentzIndex", "d", "D"], ["LorentzIndex", "q", "D"]],
+        ["Pair", ["LorentzIndex", "f", "D"], ["LorentzIndex", "r", "D"]]
+      ]
+    ]
+  },
+  {
+    "name": "37-distribute-int-sums",
+    "input": ["Times",
+      ["Plus", 1, 2],
+      ["Plus", 3, 4],
+      ["Plus", 5, 6]
+    ],
+    "outputs": [
+      231
+    ]
+  },
+  {
+    "name": "38-power-of-d-sum-cubed",
+    "input": ["Power", ["Plus", 1, "D"], 3],
+    "outputs": [
+      ["Plus", 1,
+        ["Times", 3, "D"],
+        ["Times", 3, "D", "D"],
+        ["Times", "D", "D", "D"]
+      ]
+    ]
+  },
+  {
+    "name": "39-power-times-contraction",
+    "input": ["Times",
+      ["Power", ["Plus", 1, "D"], 2],
+      ["Pair", ["LorentzIndex", "mu", "D"], ["LorentzIndex", "mu", "D"]]
+    ],
+    "outputs": [
+      ["Plus", "D",
+        ["Times", 2, "D", "D"],
+        ["Times", "D", "D", "D"]
+      ]
+    ]
+  },
+  {
+    "name": "40-power-pair-self-zero-exponent",
+    "input": ["Power",
+      ["Pair", ["LorentzIndex", "mu", "D"], ["LorentzIndex", "mu", "D"]],
+      0
+    ],
+    "outputs": [
+      ["Power",
+        ["Pair", ["LorentzIndex", "mu", "D"], ["LorentzIndex", "mu", "D"]],
+        0
+      ]
+    ]
+  },
+  {
+    "name": "41-atomized-rational-numer-folds",
+    "input": ["Plus",
+      ["Times", ["Rational", ["Plus", 2, 3], "x"], "κ"],
+      ["Times", ["Rational", 5, "x"], "κ"]
+    ],
+    "outputs": [
+      ["Plus",
+        ["Times", "κ", ["Rational", 5, "x"]],
+        ["Times", "κ", ["Rational", ["Plus", 2, 3], "x"]]
+      ]
+    ]
+  },
+  {
+    "name": "42-int32-overflow",
+    "input": ["Times", 100000, 100000],
+    "outputs": [
+      ["Times", 100000, 100000]
+    ]
+  },
+  {
+    "name": "43-complex-polynomial-imag",
+    "input": ["Complex", 0, ["Plus", "x", 1]],
+    "outputs": [
+      ["Complex", 0, ["Plus", "x", 1]]
+    ]
+  },
+  {
+    "name": "44-power-times-permuted",
+    "input": ["Plus",
+      ["Times", ["Power", ["Times", "a", "b"], -1], "κ"],
+      ["Times", ["Power", ["Times", "b", "a"], -1], "κ"]
+    ],
+    "outputs": [
+      ["Plus",
+        ["Times", "κ", ["Power", ["Times", "a", "b"], -1]],
+        ["Times", "κ", ["Power", ["Times", "b", "a"], -1]]
+      ]
+    ]
+  },
+  {
+    "name": "45-plus-int32-overflow",
+    "input": ["Plus", 2147483647, 1],
+    "outputs": [
+      ["Plus", 2147483647, 1]
+    ]
+  },
+  {
+    "name": "46-rational-add-overflow",
+    "input": ["Plus", ["Rational", 1, 100000], ["Rational", 1, 100000]],
+    "outputs": [
+      ["Rational", 1, 50000]
+    ]
+  },
+  {
+    "name": "47-rational-add-mixed-denom",
+    "input": ["Plus", ["Rational", 1, 3], ["Rational", 1, 6]],
+    "outputs": [
+      ["Rational", 1, 2]
+    ]
+  },
+  {
+    "name": "48-rational-mul-overflow",
+    "input": ["Times", ["Rational", 100000, 1], ["Rational", 100000, 1]],
+    "outputs": [
+      ["Times", 100000, ["Rational", 100000, 1]]
+    ]
+  },
+  {
+    "name": "49-complex-mul-real-overflow",
+    "input": ["Times", ["Complex", 100000, 1], ["Complex", 100000, 1]],
+    "outputs": [
+      ["Times", ["Complex", 100000, 1], ["Complex", 100000, 1]]
+    ]
+  },
+  {
+    "name": "50-times-plus-overflow-symbol",
+    "input": ["Times", ["Plus", 2147483647, 1], "κ"],
+    "outputs": [
+      ["Plus",
+        ["Times", 2147483647, "κ"],
+        ["Times", "κ", 1]
+      ]
+    ]
+  },
+  {
+    "name": "51-power-plus-neg-times-symbol",
+    "input": ["Times", ["Power", ["Plus", "a", "b"], -1], "κ"],
+    "outputs": [
+      ["Times", "κ", ["Power", ["Plus", "a", "b"], -1]]
+    ]
+  },
+  {
+    "name": "52-power-times-symbolic-exp",
+    "input": ["Times", ["Power", ["Times", "a", "b"], "n"], "κ"],
+    "outputs": [
+      ["Times", "κ", ["Power", ["Times", "a", "b"], "n"]]
+    ]
+  },
+  {
+    "name": "53-power-plus-symbolic-exp",
+    "input": ["Times", ["Power", ["Plus", "a", "b"], "n"], "κ"],
+    "outputs": [
+      ["Times", "κ", ["Power", ["Plus", "a", "b"], "n"]]
+    ]
+  },
+  {
+    "name": "54-power-times-squared",
+    "input": ["Power", ["Times", "a", "b"], 2],
+    "outputs": [
+      ["Times", "a", "a", "b", "b"]
+    ]
+  },
+  {
+    "name": "55-power-of-power",
+    "input": ["Power", ["Power", "a", 2], 3],
+    "outputs": [
+      ["Times", "a", "a", "a", "a", "a", "a"]
+    ]
+  },
+  {
+    "name": "56-power-int-int",
+    "input": ["Power", 2, 5],
+    "outputs": [
+      32
+    ]
+  },
+  {
+    "name": "57-power-one-symbolic",
+    "input": ["Power", 1, "n"],
+    "outputs": [
+      ["Power", 1, "n"]
+    ]
+  },
+  {
+    "name": "58-power-zero-zero",
+    "input": ["Power", 0, 0],
+    "outputs": [
+      ["Power", 0, 0]
+    ]
+  },
+  {
+    "name": "59-rational-zero-numer",
+    "input": ["Rational", 0, 5],
+    "outputs": [
+      0
+    ]
+  },
+  {
+    "name": "60-complex-zero-zero",
+    "input": ["Complex", 0, 0],
+    "outputs": [
+      0
+    ]
+  },
+  {
+    "name": "61-complex-rational-rational",
+    "input": ["Complex", ["Rational", 1, 2], ["Rational", 1, 4]],
+    "outputs": [
+      ["Complex", ["Rational", 1, 2], ["Rational", 1, 4]]
+    ]
+  },
+  {
+    "name": "62-times-neg-one-neg-one-symbol",
+    "input": ["Times", -1, -1, "κ"],
+    "outputs": [
+      "κ"
+    ]
+  },
+  {
+    "name": "63-plus-complex-complex",
+    "input": ["Plus", ["Complex", 1, 2], ["Complex", 3, 4]],
+    "outputs": [
+      ["Complex", 4, 6]
+    ]
+  },
+  {
+    "name": "64-times-of-times-flatten",
+    "input": ["Times", ["Times", "a", "b"], ["Times", "c", "d"]],
+    "outputs": [
+      ["Times", "a", "b", "c", "d"]
+    ]
+  },
+  {
+    "name": "65-plus-of-plus-flatten",
+    "input": ["Plus", ["Plus", "a", "b"], ["Plus", "c", "d"]],
+    "outputs": [
+      ["Plus", "a", "b", "c", "d"]
+    ]
+  },
+  {
+    "name": "66-distribute-binomial-pair-contracted",
+    "input": ["Times",
+      ["Plus", "a", "b"],
+      ["Plus", "c", "d"],
+      ["Pair", ["LorentzIndex", "mu", "D"], ["LorentzIndex", "mu", "D"]]
+    ],
+    "outputs": [
+      ["Plus",
+        ["Times", "D", "a", "c"],
+        ["Times", "D", "a", "d"],
+        ["Times", "D", "b", "c"],
+        ["Times", "D", "b", "d"]
+      ]
+    ]
+  },
+  {
+    "name": "67-five-pair-closed-loop",
+    "input": ["Times",
+      ["Pair", ["LorentzIndex", "a", "D"], ["LorentzIndex", "b", "D"]],
+      ["Pair", ["LorentzIndex", "b", "D"], ["LorentzIndex", "c", "D"]],
+      ["Pair", ["LorentzIndex", "c", "D"], ["LorentzIndex", "d", "D"]],
+      ["Pair", ["LorentzIndex", "d", "D"], ["LorentzIndex", "e", "D"]],
+      ["Pair", ["LorentzIndex", "e", "D"], ["LorentzIndex", "a", "D"]]
+    ],
+    "outputs": [
+      "D"
+    ]
+  },
+  {
+    "name": "68-pair-two-momenta-passthrough",
+    "input": ["Pair", ["Momentum", "p", "D"], ["Momentum", "q", "D"]],
+    "outputs": [
+      ["Pair", ["Momentum", "p", "D"], ["Momentum", "q", "D"]]
+    ]
+  },
+  {
+    "name": "69-momentum-survives-lorentz-contract",
+    "input": ["Times",
+      ["Pair", ["LorentzIndex", "mu", "D"], ["Momentum", "p", "D"]],
+      ["Pair", ["LorentzIndex", "mu", "D"], ["Momentum", "q", "D"]]
+    ],
+    "outputs": [
+      ["Pair", ["Momentum", "p", "D"], ["Momentum", "q", "D"]]
+    ]
+  },
+  {
+    "name": "70-multiletter-symbol-sort",
+    "input": ["Times", "abc", "ab", "a"],
+    "outputs": [
+      ["Times", "a", "ab", "abc"]
+    ]
+  },
+  {
+    "name": "71-multi-pair-key-with-opaque-coeffs",
+    "input": ["Plus",
+      ["Times", "x", ["Pair", ["LorentzIndex", "a", "D"], ["LorentzIndex", "b", "D"]]],
+      ["Times", "y", ["Pair", ["LorentzIndex", "c", "D"], ["LorentzIndex", "d", "D"]]]
+    ],
+    "outputs": [
+      ["Plus",
+        ["Times", "x", ["Pair", ["LorentzIndex", "a", "D"], ["LorentzIndex", "b", "D"]]],
+        ["Times", "y", ["Pair", ["LorentzIndex", "c", "D"], ["LorentzIndex", "d", "D"]]]
+      ]
+    ]
+  },
+  {
+    "name": "72-times-mixed-coeff-symbols",
+    "input": ["Times", 2, "a", 3, "b"],
+    "outputs": [
+      ["Times", 6, "a", "b"]
+    ]
+  },
+  {
+    "name": "73-plus-cancellation-with-survivor",
+    "input": ["Plus",
+      ["Times", 2, "x"],
+      ["Times", 3, "y"],
+      ["Times", -2, "x"]
+    ],
+    "outputs": [
+      ["Times", 3, "y"]
+    ]
+  },
+  {
+    "name": "74-fc-metric-trace-d",
+    "input": ["Pair", ["LorentzIndex", "μ", "D"], ["LorentzIndex", "μ", "D"]],
+    "outputs": [
+      "D"
+    ]
+  },
+  {
+    "name": "75-fc-vector-through-metric",
+    "input": ["Times", ["Pair", ["LorentzIndex", "μ", "D"], ["LorentzIndex", "ν", "D"]], ["Pair", ["LorentzIndex", "μ", "D"], ["Momentum", "p", "D"]]],
+    "outputs": [
+      ["Pair", ["LorentzIndex", "ν", "D"], ["Momentum", "p", "D"]]
+    ]
+  },
+  {
+    "name": "76-fc-metric-mediated-sp",
+    "input": ["Times", ["Pair", ["LorentzIndex", "μ", "D"], ["LorentzIndex", "ν", "D"]], ["Pair", ["LorentzIndex", "μ", "D"], ["Momentum", "p", "D"]], ["Pair", ["LorentzIndex", "ν", "D"], ["Momentum", "q", "D"]]],
+    "outputs": [
+      ["Pair", ["Momentum", "p", "D"], ["Momentum", "q", "D"]]
+    ]
+  },
+  {
+    "name": "77-fc-distribute-coeff-signs",
+    "input": ["Times", ["Pair", ["LorentzIndex", "ν", "D"], ["LorentzIndex", "ρ", "D"]], ["Plus", ["Times", 2, ["Pair", ["LorentzIndex", "μ", "D"], ["LorentzIndex", "ν", "D"]]], ["Times", -3, ["Pair", ["LorentzIndex", "μ", "D"], ["Momentum", "p", "D"]], ["Pair", ["LorentzIndex", "ν", "D"], ["Momentum", "q", "D"]]]]],
+    "outputs": [
+      ["Plus", ["Times", 2, ["Pair", ["LorentzIndex", "μ", "D"], ["LorentzIndex", "ρ", "D"]]], ["Times", -3, ["Pair", ["LorentzIndex", "μ", "D"], ["Momentum", "p", "D"]], ["Pair", ["LorentzIndex", "ρ", "D"], ["Momentum", "q", "D"]]]]
+    ]
+  },
+  {
+    "name": "78-fc-compound-momentum-metric",
+    "input": ["Times", ["Pair", ["LorentzIndex", "μ", "D"], ["LorentzIndex", "ν", "D"]], ["Pair", ["LorentzIndex", "μ", "D"], ["Momentum", ["Plus", "p", "q"], "D"]]],
+    "outputs": [
+      ["Pair", ["LorentzIndex", "ν", "D"], ["Momentum", ["Plus", "p", "q"], "D"]]
+    ]
+  },
+  {
+    "name": "79-fc-neg-momentum-sp",
+    "input": ["Times", -1, ["Pair", ["LorentzIndex", "μ", "D"], ["Momentum", "p", "D"]], ["Pair", ["LorentzIndex", "μ", "D"], ["Momentum", "q", "D"]]],
+    "outputs": [
+      ["Times", -1, ["Pair", ["Momentum", "p", "D"], ["Momentum", "q", "D"]]]
+    ]
+  },
+  {
+    "name": "80-fc-partial-contract-free-index",
+    "input": ["Times", ["Pair", ["LorentzIndex", "μ", "D"], ["Momentum", "p", "D"]], ["Pair", ["LorentzIndex", "ν", "D"], ["LorentzIndex", "ρ", "D"]], ["Pair", ["LorentzIndex", "ρ", "D"], ["Momentum", "q", "D"]]],
+    "outputs": [
+      ["Times", ["Pair", ["LorentzIndex", "μ", "D"], ["Momentum", "p", "D"]], ["Pair", ["LorentzIndex", "ν", "D"], ["Momentum", "q", "D"]]]
+    ]
+  },
+  {
+    "name": "81-fc-spectator-scalar-product",
+    "input": ["Times", ["Pair", ["LorentzIndex", "μ", "D"], ["LorentzIndex", "ν", "D"]], ["Pair", ["LorentzIndex", "ν", "D"], ["LorentzIndex", "ρ", "D"]], ["Pair", ["Momentum", "p", "D"], ["Momentum", "q", "D"]]],
+    "outputs": [
+      ["Times", ["Pair", ["LorentzIndex", "μ", "D"], ["LorentzIndex", "ρ", "D"]], ["Pair", ["Momentum", "p", "D"], ["Momentum", "q", "D"]]]
+    ]
+  },
+  {
+    "name": "82-fc-nonlocal-contraction-graph",
+    "input": ["Times", ["Pair", ["LorentzIndex", "α", "D"], ["LorentzIndex", "β", "D"]], ["Pair", ["LorentzIndex", "α", "D"], ["LorentzIndex", "μ", "D"]], ["Pair", ["LorentzIndex", "β", "D"], ["LorentzIndex", "ν", "D"]], ["Pair", ["LorentzIndex", "μ", "D"], ["Momentum", "p", "D"]], ["Pair", ["LorentzIndex", "ν", "D"], ["Momentum", "q", "D"]]],
+    "outputs": [
+      ["Pair", ["Momentum", "p", "D"], ["Momentum", "q", "D"]]
+    ]
+  },
+  {
+    "name": "83-fc-independent-dummies-in-sum",
+    "input": ["Plus", ["Times", ["Pair", ["LorentzIndex", "μ", "D"], ["Momentum", "p", "D"]], ["Pair", ["LorentzIndex", "μ", "D"], ["Momentum", "q", "D"]]], ["Times", ["Pair", ["LorentzIndex", "ν", "D"], ["Momentum", "r", "D"]], ["Pair", ["LorentzIndex", "ν", "D"], ["Momentum", "s", "D"]]]],
+    "outputs": [
+      ["Plus", ["Pair", ["Momentum", "r", "D"], ["Momentum", "s", "D"]], ["Pair", ["Momentum", "p", "D"], ["Momentum", "q", "D"]]]
+    ]
+  },
+  {
+    "name": "84-fc-metric-trace-4",
+    "input": ["Pair", ["LorentzIndex", "μ"], ["LorentzIndex", "μ"]],
+    "outputs": [
+      4
+    ]
+  },
+  {
+    "name": "85-fc-noop-no-shared-index",
+    "input": ["Times", ["Pair", ["LorentzIndex", "μ", "D"], ["LorentzIndex", "ν", "D"]], ["Pair", ["LorentzIndex", "ρ", "D"], ["Momentum", "p", "D"]]],
+    "outputs": [
+      ["Times", ["Pair", ["LorentzIndex", "μ", "D"], ["LorentzIndex", "ν", "D"]], ["Pair", ["LorentzIndex", "ρ", "D"], ["Momentum", "p", "D"]]]
+    ]
+  },
+  {
+    "name": "86-fc-noop-spectator-sp",
+    "input": ["Times", ["Pair", ["LorentzIndex", "μ", "D"], ["Momentum", "r", "D"]], ["Pair", ["Momentum", "p", "D"], ["Momentum", "q", "D"]]],
+    "outputs": [
+      ["Times", ["Pair", ["LorentzIndex", "μ", "D"], ["Momentum", "r", "D"]], ["Pair", ["Momentum", "p", "D"], ["Momentum", "q", "D"]]]
+    ]
+  },
+  {
+    "name": "87-fc-rational-neg-coeff-distribute",
+    "input": ["Plus", ["Times", ["Rational", 1, 2], ["Pair", ["LorentzIndex", "μ", "D"], ["LorentzIndex", "ν", "D"]], ["Pair", ["LorentzIndex", "ν", "D"], ["LorentzIndex", "ρ", "D"]]], ["Times", -3, ["Pair", ["LorentzIndex", "μ", "D"], ["Momentum", "p", "D"]], ["Pair", ["LorentzIndex", "ρ", "D"], ["Momentum", "q", "D"]]]],
+    "outputs": [
+      ["Plus", ["Times", -3, ["Pair", ["LorentzIndex", "μ", "D"], ["Momentum", "p", "D"]], ["Pair", ["LorentzIndex", "ρ", "D"], ["Momentum", "q", "D"]]], ["Times", ["Rational", 1, 2], ["Pair", ["LorentzIndex", "μ", "D"], ["LorentzIndex", "ρ", "D"]]]]
+    ]
+  },
+  {
+    "name": "88-fc-symbolic-prefactors",
+    "input": ["Plus", ["Times", "x", ["Pair", ["LorentzIndex", "μ", "D"], ["LorentzIndex", "ν", "D"]], ["Pair", ["LorentzIndex", "ν", "D"], ["LorentzIndex", "ρ", "D"]]], ["Times", "y", ["Pair", ["LorentzIndex", "μ", "D"], ["Momentum", "p", "D"]], ["Pair", ["LorentzIndex", "ρ", "D"], ["Momentum", "q", "D"]]]],
+    "outputs": [
+      ["Plus", ["Times", "y", ["Pair", ["LorentzIndex", "μ", "D"], ["Momentum", "p", "D"]], ["Pair", ["LorentzIndex", "ρ", "D"], ["Momentum", "q", "D"]]], ["Times", "x", ["Pair", ["LorentzIndex", "μ", "D"], ["LorentzIndex", "ρ", "D"]]]]
+    ]
+  },
+  {
+    "name": "89-fc-compound-momentum-sp",
+    "input": ["Times", ["Pair", ["LorentzIndex", "μ", "D"], ["Momentum", ["Plus", "p", "q"], "D"]], ["Pair", ["LorentzIndex", "μ", "D"], ["Momentum", "r", "D"]]],
+    "outputs": [
+      ["Pair", ["Momentum", "r", "D"], ["Momentum", ["Plus", "p", "q"], "D"]]
+    ]
+  },
+  {
+    "name": "90-fc-graviton-propagator-trace",
+    "input": ["Times", ["Rational", 1, 2], ["Plus", ["Times", ["Pair", ["LorentzIndex", "μ", "D"], ["LorentzIndex", "α", "D"]], ["Pair", ["LorentzIndex", "ν", "D"], ["LorentzIndex", "β", "D"]]], ["Times", ["Pair", ["LorentzIndex", "μ", "D"], ["LorentzIndex", "β", "D"]], ["Pair", ["LorentzIndex", "ν", "D"], ["LorentzIndex", "α", "D"]]], ["Times", -1, ["Pair", ["LorentzIndex", "μ", "D"], ["LorentzIndex", "ν", "D"]], ["Pair", ["LorentzIndex", "α", "D"], ["LorentzIndex", "β", "D"]]]], ["Pair", ["LorentzIndex", "μ", "D"], ["LorentzIndex", "ν", "D"]]],
+    "outputs": [
+      ["Times", ["Plus", 1, ["Times", ["Rational", -1, 2], "D"]], ["Pair", ["LorentzIndex", "α", "D"], ["LorentzIndex", "β", "D"]]]
+    ]
+  }
+]
