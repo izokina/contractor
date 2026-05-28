@@ -3,33 +3,42 @@ package contract
 import (
 	"cmp"
 	"slices"
-	"sync"
 
-	"github.com/izokina/contractor/pkg/pipeline/node"
+	"github.com/izokina/contractor/pkg/pipeline/eval"
+	"github.com/izokina/contractor/pkg/pipeline/expr"
 )
 
 type Contractor struct {
-	indexPairs map[string]node.Pair
+	indexPairs map[string]expr.Pair
 
-	scalars []any
-	pairs   []node.Pair
+	coeff expr.Scalar
+	pairs []expr.Pair
 
-	lorentz  []node.LorentzIndex
-	momentum []node.Momentum
+	lorentz  []expr.LorentzIndex
+	momentum []expr.Momentum
 
-	mu sync.Mutex
+	calc       *eval.Calculator
+	dScalar    expr.Scalar
+	fourScalar expr.Scalar
 }
 
 func NewContractor() *Contractor {
+	atomD := expr.NewAtom("D")
 	return &Contractor{
-		indexPairs: make(map[string]node.Pair),
+		indexPairs: make(map[string]expr.Pair),
+		calc:       eval.NewCalculator(),
+		dScalar: expr.Scalar{Monomials: []expr.Monomial{{
+			Coeff:   expr.OneComplex,
+			Opaques: []expr.Opaque{{Signature: "\"D\"\n", Val: atomD}},
+		}}},
+		fourScalar: expr.Scalar{Monomials: []expr.Monomial{{
+			Coeff: expr.NewComplex(expr.NewRational(4), expr.NewRational(0)),
+		}}},
 	}
 }
 
-func (c *Contractor) ContractAndNormalize(term node.Term) node.Term {
-	c.mu.Lock()
-
-	c.scalars = c.scalars[:0]
+func (c *Contractor) ContractAndNormalize(term expr.Term) expr.Term {
+	c.coeff = expr.OneScalar
 	c.pairs = c.pairs[:0]
 
 	for _, pair := range term.Pairs {
@@ -41,17 +50,10 @@ func (c *Contractor) ContractAndNormalize(term node.Term) node.Term {
 			delete(c.indexPairs, l.Signature)
 		}
 	}
-	term.Pairs = append(make([]node.Pair, 0, len(c.pairs)), c.pairs...)
-	if len(c.scalars) != 0 {
-		newScalars := make([]any, 0, len(term.Scalars)+len(c.scalars))
-		newScalars = append(newScalars, term.Scalars...)
-		newScalars = append(newScalars, c.scalars...)
-		term.Scalars = newScalars
-	}
+	term.Pairs = append(make([]expr.Pair, 0, len(c.pairs)), c.pairs...)
+	term.Coeff = c.calc.Mul(term.Coeff, c.coeff)
 
-	c.mu.Unlock()
-
-	slices.SortFunc(term.Pairs, func(l, r node.Pair) int {
+	slices.SortFunc(term.Pairs, func(l, r expr.Pair) int {
 		c := cmp.Compare(len(l.Momentum), len(r.Momentum))
 		if c != 0 {
 			return c
@@ -74,7 +76,7 @@ func (c *Contractor) ContractAndNormalize(term node.Term) node.Term {
 	return term
 }
 
-func (c *Contractor) addPair(pair node.Pair) {
+func (c *Contractor) addPair(pair expr.Pair) {
 	c.lorentz = append(c.lorentz[:0], pair.Lorentz...)
 	c.momentum = append(c.momentum[:0], pair.Momentum...)
 
@@ -103,9 +105,9 @@ func (c *Contractor) addPair(pair node.Pair) {
 
 	if len(c.lorentz) == 2 && c.lorentz[0].Signature == c.lorentz[1].Signature {
 		if c.lorentz[0].HasD {
-			c.scalars = append(c.scalars, "D")
+			c.coeff = c.calc.Mul(c.coeff, c.dScalar)
 		} else {
-			c.scalars = append(c.scalars, 4)
+			c.coeff = c.calc.Mul(c.coeff, c.fourScalar)
 		}
 		return
 	}
@@ -116,7 +118,7 @@ func (c *Contractor) addPair(pair node.Pair) {
 	if len(c.momentum) == 2 && c.momentum[0].Signature > c.momentum[1].Signature {
 		c.momentum[0], c.momentum[1] = c.momentum[1], c.momentum[0]
 	}
-	pair = node.Pair{}
+	pair = expr.Pair{}
 	pair.Lorentz = append(pair.Lorentz, c.lorentz...)
 	pair.Momentum = append(pair.Momentum, c.momentum...)
 	for _, l := range c.lorentz {
