@@ -7,4 +7,6 @@ const (
 	Power        = "Power"
 	Times        = "Times"
 	Plus         = "Plus"
+	Rational     = "Rational"
+	Complex      = "Complex"
 )

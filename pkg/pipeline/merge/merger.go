@@ -1,96 +1,75 @@
 package merge
 
 import (
-	"encoding/json"
-	"fmt"
+	"encoding/json/jsontext"
 	"sync"
-	"unsafe"
 
 	"github.com/izokina/contractor/pkg/literal"
-	"github.com/izokina/contractor/pkg/pipeline/node"
+	"github.com/izokina/contractor/pkg/pipeline/codec"
+	"github.com/izokina/contractor/pkg/pipeline/eval"
+	"github.com/izokina/contractor/pkg/pipeline/expr"
 )
 
 type termSet struct {
-	Pairs   []node.Pair
-	Scalars [][]any
+	Pairs []expr.Pair
+	Coeff expr.Scalar
 }
 
 type Merger struct {
-	terms map[string]termSet
-	mu    sync.Mutex
+	mu     sync.Mutex
+	terms  map[string]termSet
+	signer codec.Signer
+	calc   *eval.Calculator
 }
 
 func NewMerger() *Merger {
 	return &Merger{
 		terms: make(map[string]termSet),
+		calc:  eval.NewCalculator(),
 	}
 }
 
-func (m *Merger) Add(term node.Term) error {
-	pairsBytes, err := json.Marshal(term.Pairs)
-	if err != nil {
-		return fmt.Errorf("Failed to marshal pairs: %w", err)
-	}
-	signature := unsafe.String(unsafe.SliceData(pairsBytes), len(pairsBytes))
-
+func (m *Merger) Add(term expr.Term) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	oldExpr, _ := m.terms[signature]
-	oldExpr.Pairs = term.Pairs
-	oldExpr.Scalars = append(oldExpr.Scalars, term.Scalars)
-	m.terms[signature] = oldExpr
-	return nil
+	signature := m.signer.Pairs(term.Pairs)
+
+	old := m.terms[signature]
+	old.Pairs = term.Pairs
+	old.Coeff = m.calc.Add(old.Coeff, term.Coeff)
+	m.terms[signature] = old
 }
 
-func (m *Merger) Flush() <-chan any {
-	cout := make(chan any)
-	m.mu.Lock()
-	go func() {
-		defer close(cout)
-		defer m.mu.Unlock()
-
-		for signature, term := range m.terms {
-			delete(m.terms, signature)
-
-			object := []any{literal.Times}
-			switch len(term.Scalars) {
-			case 1:
-				object = append(object, term.Scalars[0]...)
-			default:
-				sum := append(make([]any, 0, len(term.Scalars)+1), literal.Plus)
-				for _, extra := range term.Scalars {
-					switch len(extra) {
-					case 0:
-						sum = append(sum, 1)
-					case 1:
-						sum = append(sum, extra[0])
-					default:
-						sum = append(sum, append(append(make([]any, 0, len(extra)+1), literal.Times), extra...))
-					}
-				}
-				object = append(object, sum)
-			}
-			for _, pair := range term.Pairs {
-				pairRaw := make([]any, 0, 3)
-				pairRaw = append(pairRaw, literal.Pair)
-				for _, l := range pair.Lorentz {
-					pairRaw = append(pairRaw, json.RawMessage(l.Signature))
-				}
-				for _, m := range pair.Momentum {
-					pairRaw = append(pairRaw, m.Source)
-				}
-				object = append(object, pairRaw)
-			}
-			switch len(object) {
-			case 1:
-				cout <- 1
-			case 2:
-				cout <- object[1]
-			default:
-				cout <- object
-			}
+// Flush writes all accumulated terms to enc as a single JSON value and clears the merger.
+func (m *Merger) Flush(enc *jsontext.Encoder) error {
+	for sig, term := range m.terms {
+		if len(term.Coeff.Monomials) == 0 {
+			delete(m.terms, sig)
 		}
-	}()
-	return cout
+	}
+
+	n := len(m.terms)
+	if n == 0 {
+		return enc.WriteToken(jsontext.Int(0))
+	}
+	if n > 1 {
+		if err := enc.WriteToken(jsontext.BeginArray); err != nil {
+			return err
+		}
+		if err := enc.WriteToken(jsontext.String(literal.Plus)); err != nil {
+			return err
+		}
+	}
+	w := codec.NewWriter(enc)
+	for _, term := range m.terms {
+		if err := w.WriteTerm(expr.Term{Pairs: term.Pairs, Coeff: term.Coeff}); err != nil {
+			return err
+		}
+	}
+	clear(m.terms)
+	if n > 1 {
+		return enc.WriteToken(jsontext.EndArray)
+	}
+	return nil
 }
