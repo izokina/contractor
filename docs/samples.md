@@ -6,7 +6,7 @@ Tables with an **Output** column describe samples whose actual output should mat
 
 Coefficients are normalised to sum-of-monomials form (see [scalar-normal-form.md](scalar-normal-form.md)) inside `eval.TermFolder` as the parser-side Walker emits each monomial; the Merger then accumulates Scalars per pair-key via a single shared `eval.Calculator`. Outputs are signature-sorted, like-monomials are summed, and zero-coefficient monomials are dropped.
 
-Samples are organised into topical sections below; numbers are not strictly consecutive — each section's range is listed below. Sections: contraction mechanics (01–07, 67–69), parser behavior (08–18, 51–58, 64–65), coefficient folding (19–22, 62, 72–73), scalar arithmetic (23–35, 46–47, 59–61, 63), output structure (36, 70–71), combinatorial (37–39, 66), intentionally opaque (40), known implementation flaws (41–45, 48–50), FeynCalc internal-notation contractions (74–90).
+Samples are organised into topical sections below; numbers are not strictly consecutive — each section's range is listed below. Sections: contraction mechanics (01–07, 67–69), parser behavior (08–18, 51–58, 64–65), coefficient folding (19–22, 62, 72–73), scalar arithmetic (23–35, 46–47, 59–61, 63, 99, 102), exact large-magnitude arithmetic (42, 45, 48–50, 91–98, 100–101), output structure (36, 70–71), combinatorial (37–39, 66), intentionally opaque (40), known implementation flaws (41, 43–44), FeynCalc internal-notation contractions (74–90).
 
 ---
 
@@ -57,7 +57,7 @@ Samples are organised into topical sections below; numbers are not strictly cons
 
 ## Coefficient folding
 
-The `eval.Calculator` groups monomials by their joint atom-signature, folds coefficients in the int32-bounded Gaussian-rational ring, drops zero-coefficient monomials, and sorts by signature. See [scalar-normal-form.md](scalar-normal-form.md) for the algebra.
+The `eval.Calculator` groups monomials by their joint atom-signature, folds coefficients in the exact Gaussian-rational ring (int32 fast path + `math/big` fallback), drops zero-coefficient monomials, and sorts by signature. See [scalar-normal-form.md](scalar-normal-form.md) for the algebra.
 
 | Name | Input structure | Output | Tests |
 |------|----------------|--------|-------|
@@ -73,7 +73,7 @@ The `eval.Calculator` groups monomials by their joint atom-signature, folds coef
 
 ## Scalar arithmetic
 
-`Rational[a, b]` and `Complex[a, b]` are folded into the coefficient ring whenever their arguments fit (int32 numerator/denominator, int32-or-Rational real/imag); see [scalar-normal-form.md](scalar-normal-form.md) §4.4–§4.5. Other scalar atoms (`FeynAmpDenominator`, `PropagatorDenominator`, opaque `Power`, etc.) are carried through as opaque atoms keyed by signature, so two terms with the same opaque structure still merge.
+`Rational[a, b]` and `Complex[a, b]` are folded into the coefficient ring whenever their arguments are integers (of any magnitude — the ring promotes to `math/big` past int32) or, for `Complex`, integer-or-Rational real/imag; see [scalar-normal-form.md](scalar-normal-form.md) §4.4–§4.5. Other scalar atoms (`FeynAmpDenominator`, `PropagatorDenominator`, opaque `Power`, etc.) are carried through as opaque atoms keyed by signature, so two terms with the same opaque structure still merge.
 
 | Name | Input structure | Output | Tests |
 |------|----------------|--------|-------|
@@ -84,18 +84,44 @@ The `eval.Calculator` groups monomials by their joint atom-signature, folds coef
 | `27-fraction-arithmetic` | `(R(1/2) + R(1/3)) * 12` | `10` | Rational add (`R(5/6)`) and then `R(5/6)·12 = 10` reducing to integer |
 | `28-rational-cascade` | `R(1/2) * R(1/2) * R(1/2) * R(1/2) * Pair[mu,nu,D]` | `R(1/16) * Pair[mu,nu,D]` | Cascading Rational multiplication anchored by a non-contracting Pair |
 | `29-rational-symbolic-numer` | `Rational["x", 4]` | `["Rational", "x", 4]` | §4.4: symbolic numerator → not in coefficient ring → atomized; opaque atom is emitted as-is |
-| `30-float-times-symbol` | `Times[0.5, "κ"]` | `["Times", "κ", 0.5]` | §7: floats are opaque atoms (the coefficient ring is int32-bounded); `0.5` carries through as a `jsontext.Value` atom |
+| `30-float-times-symbol` | `Times[0.5, "κ"]` | `["Times", "κ", 0.5]` | §7: floats are opaque atoms (there is no float coefficient ring); `0.5` carries through as a `jsontext.Value` atom |
 | `31-complex-mul-conjugate` | `(1+i) · (1-i)` | `2` | Complex conjugate product: `(1+i)(1−i) = 1 − i² = 2`; tests Complex multiplication with both nonzero real and imaginary parts |
 | `32-rational-mul-needs-gcd` | `Rational[2, 3] · Rational[3, 4]` | `Rational[1, 2]` | Rational multiplication: `(2·3)/(3·4) = 6/12` reduces to `Rational[1, 2]` via gcd |
 | `33-rational-mul-collapses-to-int` | `Rational[2, 3] · Rational[3, 2]` | `1` | Rational multiplication collapses to integer when `gcd` reduction yields `q = 1` |
 | `34-power-pair-cubed` | `Power[Pair[m,n,D], 3]` | `"D" * Pair[m,n,D]` | Cube of a Pair: parser-side Walker expands to three copies; first two contract on shared `m,n` to `"D"`, third survives free (analogous to sample 08 with one extra copy) |
 | `35-zero-distribution` | `Times[Plus[1, -1], "κ"]` | `0` | Inner `Plus[1, -1]` folds to `0`; `Times[0, κ]` gives a zero-coefficient monomial which is dropped → empty Scalar → integer `0` |
-| `46-rational-add-overflow` | `Rational[1, 100000] + Rational[1, 100000]` | `Rational[1, 50000]` | Rational addition is followed by gcd reduction (§3 invariant `gcd(\|p\|,q)=1`); after reduction the result `2/100000` collapses to `1/50000`, fitting back inside the int32-bounded ring |
+| `46-rational-add-overflow` | `Rational[1, 100000] + Rational[1, 100000]` | `Rational[1, 50000]` | Rational addition is followed by gcd reduction (§3 invariant `gcd(\|p\|,q)=1`); after reduction the result `2/100000` collapses to `1/50000`, fitting back inside the int32 fast path |
 | `47-rational-add-mixed-denom` | `Rational[1, 3] + Rational[1, 6]` | `Rational[1, 2]` | Mixed-denominator Rational addition: lcm of denominators is `6`, sum is `3/6`, gcd reduction yields `1/2`; same code path as sample 46 with mixed denominators |
 | `59-rational-zero-numer` | `Rational[0, 5]` | `0` | §3 invariant `p ≠ 0`: a Rational with zero numerator collapses to integer `0` |
 | `60-complex-zero-zero` | `Complex[0, 0]` | `0` | §3 invariant `b = 0` collapses Complex to its real part; with real also `0`, the result is integer `0` |
 | `61-complex-rational-rational` | `Complex[R(1/2), R(1/4)]` | `["Complex", ["Rational", 1, 2], ["Rational", 1, 4]]` | Both real and imag are reduced Rationals — both inside the coefficient ring per §4.5; result is a single Complex coefficient |
 | `63-plus-complex-complex` | `Complex[1, 2] + Complex[3, 4]` | `["Complex", 4, 6]` | Direct Complex addition; both fold to coefficients, sum is computed in the ring |
+| `99-rational-zero-denom-opaque` | `Rational[1, 0] + Rational[1, 0]` | `["Times", 2, ["Rational", 1, 0]]` | §4.4: `B = 0` is outside the coefficient ring, so `Rational[1, 0]` stays an opaque atom; the two copies merge as like monomials |
+| `102-rational-literal-reduction-edges` | `R(-2147483648/-1)·a + R(1/-2147483648)·b + R(4/-6)·c + R(2/4)·d` | `Plus[2147483648·a, R(-1/2147483648)·b, R(-2/3)·c, R(1/2)·d]` | §3 reduction of int32 literals at the int32 boundary: moving the sign off a negative denominator can push `MinInt32` out of int32 range, promoting the value to big (`a`, `b`); ordinary sign-flip and gcd reduction stay small (`c`, `d`) |
+
+---
+
+## Exact large-magnitude arithmetic
+
+Coefficient arithmetic is exact at any magnitude (§6): the int32 fast path promotes to `math/big` (`big.Rat`) when a result exceeds int32 and demotes back when a later result fits. These samples drive each promotion path — integer multiplication, integer addition (across the merger), Rational and Complex multiplication, oversized input literals, promotion inside the contractor — and the return to int32. Demotion is observable in output only where the writer suppresses a coefficient of exactly `1` (96, 100): a big-backed value renders the same digits as its int32 form, so the other return-to-int32 rows check the value, not the representation.
+
+| Name | Input structure | Output | Tests |
+|------|----------------|--------|-------|
+| `42-int32-overflow` | `Times[100000, 100000]` | `10000000000` | `100000·100000 = 10¹⁰` exceeds int32 max (~2.15·10⁹); the product promotes to a big integer and emits exactly |
+| `45-plus-int32-overflow` | `Plus[2147483647, 1]` | `2147483648` | `INT32_MAX + 1` overflows int32; the two addends meet in the merger, whose `Add` promotes to `big.Rat` and folds them into one exact coefficient |
+| `48-rational-mul-overflow` | `Rational[100000, 1] · Rational[100000, 1]` | `10000000000` | Rational product numerator `10¹⁰` exceeds int32; promoted to big, then demoted to a bare integer since the denominator reduces to 1 |
+| `49-complex-mul-real-overflow` | `Complex[100000, 1] · Complex[100000, 1]` | `["Complex", 9999999999, 200000]` | `(10⁵+i)² = (10¹⁰−1) + 2·10⁵·i`; the real part overflows int32 and promotes to a big integer, the imaginary part stays in the int32 fast path |
+| `50-times-plus-overflow-symbol` | `Times[Plus[2147483647, 1], "κ"]` | `["Times", 2147483648, "κ"]` | Distribution yields two `[κ]`-signature monomials; their coefficients sum (`big.Rat` promotion) into a single monomial with an exact big coefficient |
+| `91-big-literal-fold` | `Times[10000000000, 2]` | `20000000000` | An out-of-int32 integer *literal* parses straight into the ring (as `*big.Int`) and folds; `10¹⁰·2 = 2·10¹⁰` stays big |
+| `92-big-intermediate-demotes-to-int32` | `Times[10000000000, Rational[1, 10000000000]]` | `1` | A big intermediate cancels back into int32 range: `10¹⁰ · 1/10¹⁰ = 1` renders as a plain `1` (value check; 96 is the demotion-sensitive counterpart) |
+| `93-big-rational-survives` | `Rational[10000000000, 1] · Rational[1, 30000000001]` | `["Rational", 10000000000, 30000000001]` | A non-collapsing big Rational with both numerator and denominator beyond int32; serialised at full precision |
+| `94-contraction-coeff-crosses-int32` | `600000000 · Pair[mu, mu]` | `2400000000` | Promotion through the *in-contractor* `Calculator.Mul`: the self-contracting `Pair[mu, mu]` (no `D`) folds to `4`, and `600000000·4 = 2.4·10⁹` crosses int32 inside the contractor, not at parse time |
+| `95-big-sum-cancels-to-zero-drops` | `10000000000·x + (-10000000000)·x + y` | `"y"` | Big coefficients cancel in the merger: the `[x]` monomial's coefficients sum to `0` and the zero monomial is dropped; only `y` survives (zero is detected in either representation, so this checks cancellation, not demotion) |
+| `96-big-coeff-reduces-to-one-suppressed` | `Times[10000000000, Rational[1, 10000000000], "x"]` | `"x"` | The coefficient `10¹⁰·1/10¹⁰ = 1` demotes to a canonical int32 `1` (`== OneComplex`), so the coefficient factor is suppressed and only the bare opaque `x` is emitted; a big-backed `1` would render as an explicit `1` factor |
+| `97-neg-min-int32-promotes` | `Times[-1, -2147483648]` | `2147483648` | Promotion boundary: negating `MinInt32` (`−(−2147483648) = 2147483648`) crosses int32 and promotes to a big integer |
+| `98-big-intermediate-demotes-to-small-int` | `Times[30000000000, Rational[1, 6000000000]]` | `5` | Both operands are big; the product `3·10¹⁰ / 6·10⁹ = 5` lands back in int32 range and renders as `5` (value check) |
+| `100-big-coeff-one-suppressed-on-pair` | `Times[10000000000, Rational[1, 10000000000], Pair[a, b]]` | `["Pair", ["LorentzIndex", "a"], ["LorentzIndex", "b"]]` | Demotion on the tensor path: the coefficient demotes to `1` while the Walker folds the term and stays the canonical `1` through the contractor and merger, so `WriteTerm` emits the bare Pair rather than `Times[1, Pair]` |
+| `101-big-literal-in-opaque` | `Times[f[10000000000], Power[x, 10000000000]]` | `["Times", ["Power", "x", 10000000000], ["f", 10000000000]]` | Oversized literals in opaque positions (unknown head, non-int32 exponent) never fold and render as full-precision JSON numbers; opaques sort by JSON signature (`["P…` before `["f…`) |
 
 ---
 
@@ -139,13 +165,8 @@ These samples document behaviours where the contractor's actual output diverges 
 | Name | Input structure | Current (wrong) output | Spec | Bug |
 |------|----------------|------------------------|------|-----|
 | `41-atomized-rational-numer-folds` | `Rational[Plus[2, 3], "x"]·κ + Rational[5, "x"]·κ` | `Plus[Times["κ", Rational[5, "x"]], Times["κ", Rational[Plus[2, 3], "x"]]]` | `Times[2, "κ", Rational[5, "x"]]` | §5 Decision C1: opaque-atom signature must use *normalised* sub-trees, so `Plus[2, 3]` should fold to `5` before signing. Currently the literal tree is signed and the two atoms have distinct signatures, preventing merge. The same root cause applies to other atomized positions (Rational denominator, Complex real/imag, Power exponent) — fixing it here fixes the family. |
-| `42-int32-overflow` | `Times[100000, 100000]` | `["Times", 100000, 100000]` | `10000000000` (int64 atom) | §6 overflow policy: `100000 · 100000 = 10¹⁰` exceeds int32 max (~2.15·10⁹). The docs require the product to be computed at int64 precision and emitted as an int64 atom. Currently the multiplication is skipped and the un-evaluated `Times` is emitted, leaving an unfolded coefficient in the output. Canonical case for the §6 atomization bug. |
 | `43-complex-polynomial-imag` | `Complex[0, Plus["x", 1]]` | `["Complex", 0, ["Plus", "x", 1]]` | `Plus[Complex[0, 1], Times[Complex[0, 1], "x"]]` | §4.5 polynomial-imaginary branch unimplemented: when `Im` is a multi-monomial polynomial, the spec requires expanding to `A + i·T = i·(x + 1) = i + i·x`. Currently the `Plus` is left intact inside the `Complex`, so the Complex is not folded into a normal-form sum. Same root cause covers Complex with symbolic real (`Complex["x", 1]`). |
 | `44-power-times-permuted` | `Power[Times["a","b"], -1]·κ + Power[Times["b","a"], -1]·κ` | `Plus[Times["κ", Power[Times["a","b"], -1]], Times["κ", Power[Times["b","a"], -1]]]` | `Times[2, "κ", Power[Times["a", "b"], -1]]` | §5 Decision C1 for `Times` inside an atomized `Power` child. Spec: the inner `Times` factors should be canonicalised (sorted) before signing, so the two atoms have the same signature and merge. Currently the input order is preserved (analogous case applies to `Plus`-inside-`Power`). |
-| `45-plus-int32-overflow` | `Plus[2147483647, 1]` | `["Plus", 2147483647, 1]` *(addend order non-deterministic across runs — multiset-equal forms)* | `2147483648` (int64 atom) | §6 overflow not canonicalised. The writer renders `Atom{int32(1)}` faithfully (opaques and parsed-Times children alike), so the output preserves all the input data. The residual pattern is the same as 42: the calculator's `foldBuf` overflow path atomizes the incoming operand rather than the int64 sum, so the two addends survive as separate monomials in an un-folded `Plus`. Whichever operand arrives second at the merger ends up wrapped as the int32 opaque, hence the addend-order non-determinism (multiset-equivalent). |
-| `48-rational-mul-overflow` | `Rational[100000, 1] · Rational[100000, 1]` | `["Times", 100000, ["Rational", 100000, 1]]` | `10000000000` (int64 atom) | **Asymmetric "split-flush" on Rational-multiplication overflow.** The product numerator `10¹⁰` overflows int32. Per §6 the whole node should atomize as an int64. Instead the implementation flushes the accumulator as an int (after `q=1` collapse) and emits the *un-multiplied* second operand as a raw `Rational[100000, 1]` — which itself violates §3 `q ≠ 1`. The output is internally inconsistent: one factor is an int, the other is a Rational that should have been an int. |
-| `49-complex-mul-real-overflow` | `Complex[100000, 1] · Complex[100000, 1]` | `["Times", ["Complex", 100000, 1], ["Complex", 100000, 1]]` | `Complex[9999999999, 200000]` (with int64-atom real, since `100000² − 1 ≈ 10¹⁰` overflows int32) | §6 overflow in the Complex multiplication path. Spec: when the int32 coefficient ring can't represent the product, atomize per §6. Currently the `Times` is left entirely unevaluated — both Complex operands kept as-is (uniformly-unfolded, distinct from the asymmetric "split-flush" of Rational mul in sample 48). Same shape applies to Complex addition overflow. |
-| `50-times-plus-overflow-symbol` | `Times[Plus[2147483647, 1], "κ"]` | `["Plus", ["Times", 2147483647, "κ"], ["Times", "κ", 1]]` | `Times[2147483648, "κ"]` (with int64-atom coefficient) | Distribution + §6 overflow. `Times` distributes `Plus` to two monomials sharing signature `[κ]`; on overflow the second monomial carries an extra `Atom{int32(1)}` opaque, which the writer now renders faithfully as the literal `1`. Both operands preserved; the Plus-of-two-Times shape persists because the calculator doesn't fold the residual into a single int64-coefficient monomial. |
 
 ---
 

@@ -3,6 +3,7 @@ package codec
 import (
 	"cmp"
 	"encoding/json/jsontext"
+	"math/big"
 	"slices"
 	"strconv"
 
@@ -188,10 +189,14 @@ func (p *Parser) parseScalar(msg string) any {
 		return p.readToken(jsontext.KindString, msg).String()
 	case jsontext.KindNumber:
 		tok := p.readToken(jsontext.KindNumber, msg)
-		if v, err := strconv.ParseInt(tok.String(), 10, 32); err == nil {
+		s := tok.String()
+		if v, err := strconv.ParseInt(s, 10, 32); err == nil {
 			return int32(v)
 		}
-		return jsontext.Value(tok.String())
+		if b, ok := new(big.Int).SetString(s, 10); ok {
+			return b
+		}
+		return jsontext.Value(s)
 	default:
 		return p.readValue(msg)
 	}

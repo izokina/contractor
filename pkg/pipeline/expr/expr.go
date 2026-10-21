@@ -1,6 +1,6 @@
 // Package expr holds the value types of the contractor pipeline: the Expr
-// tree built by the parser and consumed by the writer, the int32-bounded
-// arithmetic ring (Rational / Complex / Scalar) used by the merger to fold
+// tree built by the parser and consumed by the writer, the exact arithmetic
+// ring (Rational / Complex / Scalar) used by eval.Calculator to fold
 // coefficients, and the conversion helpers that bridge the two.
 package expr
 
@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"encoding/json/jsontext"
 	"fmt"
+	"math/big"
 	"strconv"
 	"unsafe"
 )
@@ -31,7 +32,7 @@ func (a *Atom) Len() int       { return 1 }
 func (a *Atom) IsScalar() bool { return true }
 
 // NewAtom wraps a raw scalar value as an Atom with a precomputed signature.
-// Accepted types: int32, int64, string, jsontext.Value, []any.
+// Accepted types: int32, *big.Int, string, jsontext.Value, []any.
 func NewAtom(value any) *Atom {
 	return &Atom{Value: value, Signature: atomSignature(value)}
 }
@@ -149,8 +150,8 @@ func atomSignature(value any) string {
 	switch v := value.(type) {
 	case int32:
 		return strconv.FormatInt(int64(v), 10)
-	case int64:
-		return strconv.FormatInt(v, 10)
+	case *big.Int:
+		return v.String()
 	case string:
 		return v
 	case jsontext.Value:
