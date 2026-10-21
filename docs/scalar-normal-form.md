@@ -15,12 +15,11 @@ outside this model and are handled by the contractor.
 
 The atoms the scalar layer sees fall into three categories:
 
-- **Numeric atoms.** `int32` integers (e.g. `0`, `1`, and the `4` emitted by contraction).
+- **Numeric atoms.** `int32` integers (e.g. `0`, `1`, and the `4` emitted by contraction), and `*big.Int` for integers beyond int32 range (see §6).
 - **Symbolic / opaque atoms.** Strings (`"D"`, `"kappa"`, …), `jsontext.Value`
-  blobs (floats, big-int literals, named constants like `Pi`),
-  reassembled `[]any` for unknown head-objects (`FeynAmpDenominator[…]`,
-  `PropagatorDenominator[…]`, anything else the parser doesn't recognise),
-  and `int64` atoms produced by overflow (see §6).
+  blobs (floats and other non-integer numeric literals, named constants like `Pi`),
+  and reassembled `[]any` for unknown head-objects (`FeynAmpDenominator[…]`,
+  `PropagatorDenominator[…]`, anything else the parser doesn't recognise).
 - **Structured scalars.** `Power`, `Rational`, `Complex`. These are
   *sometimes* foldable into the normal form and *sometimes* opaque, depending
   on their arguments — see §4 and §5.
@@ -44,7 +43,7 @@ with the following invariants:
    `a_1^{e_1} · a_2^{e_2} · … · a_n^{e_n}` where:
    - the `a_i` are **non-coefficient** atoms (symbolic / opaque / structured-but-opaque, see §5);
    - their `Signature`s are pairwise distinct within the monomial;
-   - exponents `e_i` are non-zero integers (positive in the int32-only world; see §4 for why negative exponents do not occur);
+   - exponents `e_i` are non-zero integers (positive; see §4 for why negative exponents do not occur);
    - the `(Signature, e_i)` entries are sorted by `Signature`.
 3. **Distinct monomials.** The signatures of the `M_k` are pairwise distinct.
    No two terms share a monomial signature.
@@ -64,31 +63,31 @@ serialisations (via `Signer` over the normalised tree) are byte-identical.
 
 A **coefficient value** `c` is one of:
 
-- `Integer` — an `int32` atom (in particular, `0` and `1`);
+- `Integer` — an integer atom (`int32`, or `*big.Int` beyond int32 range; in particular, `0` and `1`);
 - `Rational[p, q]` — a `Rational` whose numerator `p` and denominator `q`
-  are both `int32` atoms, in canonical reduced form:
+  are both integers (int32 fast path, big fallback), in canonical reduced form:
   - `q > 0`,
   - `gcd(|p|, q) = 1`,
   - `q ≠ 1` (otherwise the rational collapses to the integer `p`),
   - `p ≠ 0` (otherwise the rational collapses to the integer `0`);
 - `Complex[a, b]` — a `Complex` whose real part `a` and imaginary part `b`
-  are each either `Integer` or `Rational[int32, int32]`, with
+  are each either `Integer` or `Rational`, with
   `b ≠ 0` (otherwise the complex collapses to its real part).
 
-This is the **fragment of `ℚ[i]` representable in int32**. It is *not* a
-field — it is not closed under addition or multiplication — and the failure
-mode is overflow (§6).
+This is the ring `ℚ[i]` of Gaussian rationals, represented with an int32 fast
+path and a `math/big` fallback (§6). It is closed under addition, subtraction,
+and multiplication; division is defined except by zero.
 
-The choice to keep coefficients in this restricted set, rather than promoting
-to arbitrary-precision integers, is **intentional**. See §7.
+Coefficients are exact at any magnitude; the int32 representation is a
+performance fast path, not a semantic bound. See §6 and §7.
 
 ---
 
 ## 4. Composition rules
 
 Inputs are normalised; outputs must be normalised. The following rules define
-each composer's behaviour. Where a rule cannot be carried out (overflow,
-non-monomial denominator, non-integer exponent), the offending node is
+each composer's behaviour. Where a rule cannot be carried out (non-monomial
+denominator, non-integer exponent, symbolic argument), the offending node is
 **atomized** — wrapped as a single opaque atom whose signature is derived from
 the normalised sub-trees (§5).
 
@@ -98,19 +97,13 @@ Merge the two monomial multisets keyed by monomial signature; for like
 monomials, add coefficients in the coefficient ring (§3). Drop any monomial
 whose coefficient becomes the integer `0`. Re-sort by monomial signature.
 
-If a coefficient addition overflows the int32-bounded coefficient set
-(§6), the corresponding monomial is **atomized**: the offending sum
-`c_a · M + c_b · M` becomes a single opaque atom with the canonicalised
-form of its un-foldable subexpression, and that atom enters its own
-monomial.
-
 ### 4.2 `Times(S, T)`
 
 Distribute: for every pair `(c_k M_k, d_l N_l)` produce
 `(c_k · d_l) · (M_k · N_l)`. The product of monomials merges atom-power
 maps by **adding exponents**; entries whose exponent becomes zero are
 dropped (this gives `Power[a, 0] = 1` for free). The product of
-coefficients is computed in the coefficient ring; on overflow, atomize (§6).
+coefficients is computed in the coefficient ring (§6).
 
 After distribution, collect like monomials by signature, summing
 coefficients (§4.1 rules apply). Any monomial with coefficient `0` is
@@ -123,19 +116,18 @@ is zero.
 - `n > 0`: compute by repeated `Times` (§4.2). Closed under the model.
 - `n = 0`: **atomized** (§5), *not* reduced to `1`. `Power[0, 0]` is
   undefined and the model can't tell at fold time whether `S = 0`.
-- `n < 0`: not produced by the composition rules in the int32-only world.
+- `n < 0`: not produced by the composition rules.
   Negative-exponent Power is not synthesised internally; if it arrives in
   the input, see §5.
 
 ### 4.4 `Rational[A, B]`
 
-If `A` and `B` are both integer coefficients (the only case where the int32
-coefficient ring even applies), reduce as in §3. The result is a coefficient
-value, lifted to a single monomial `c · 1`.
+If `A` and `B` are both integers, reduce as in §3 (any magnitude — the ring
+promotes to `math/big` past int32). The result is a coefficient value, lifted
+to a single monomial `c · 1`.
 
 In all other cases — `A` or `B` containing atoms; `B` a multi-monomial sum;
-`B = 0`; reduction overflowing int32 — the entire `Rational[A, B]` is
-**atomized** (§5). Decision **B1**.
+`B = 0` — the entire `Rational[A, B]` is **atomized** (§5). Decision **B1**.
 
 ### 4.5 `Complex[A, B]`
 
@@ -146,9 +138,6 @@ Otherwise, if the imaginary part is itself a *normalised polynomial* `T`,
 the result is `A + i · T` computed by `Plus` and `Times`: every monomial of
 `T` has its coefficient multiplied by `i` (Gaussian-rational arithmetic at
 the coefficient level), and the result is `Plus`-merged with the normalisation of `A`.
-
-If any required arithmetic overflows int32, the offending node is
-atomized.
 
 ### 4.6 `Power(S, e)` with non-integer `e`
 
@@ -168,10 +157,9 @@ monomials like any other indeterminate.
 The atomization rule:
 
 - **Decision B1 — what gets atomized.** The following are atomized:
-  - `Rational[A, B]` whenever it is not a reduced int32-pair coefficient;
+  - `Rational[A, B]` whenever it is not a reduced integer-pair coefficient;
   - `Power[S, e]` whenever `e` is not a positive int32 (including negative integers, since `1/(x+y)` is not a Laurent polynomial);
-  - `Complex[A, B]` whose normal form is not expressible per §4.5;
-  - any node whose evaluation overflows the int32 coefficient ring (§6).
+  - `Complex[A, B]` whose normal form is not expressible per §4.5.
 
 - **Decision C1 — how the atom's signature is built.** The opaque atom's
   `Signature` is the canonical encoding (`Signer` output) of the
@@ -198,47 +186,47 @@ signature.
 
 ## 5b. Component contract: render faithfully, normalize optionally
 
-The normal form above describes the *target* shape, not a contract every component must rely on. Pipeline components (writer, signer, merger, contractor) **must process whatever Scalar they receive** without dropping data, even when the input is not in §2-§6 normal form. The calculator's overflow recovery (§6) is a concrete case: it can leave a Scalar with two monomials whose factor sets differ only by an `Atom{int32(N)}` opaque that, in normal form, would have folded into the coefficient. Downstream components must render that opaque as a literal factor rather than silently suppressing it.
+The normal form above describes the *target* shape, not a contract every component must rely on. Pipeline components (writer, signer, merger, contractor) **must process whatever Scalar they receive** without dropping data, even when the input is not in §2-§5 normal form. The atomisation gap (§5 Decision C1) is the concrete case: an opaque atom's signature is built from the sub-trees as they arrived, so a monomial can carry an opaque `Val` (e.g. a parsed `Rational[Plus[2,3], x]` or `Times[1, x]`) that is not itself in normal form. Downstream components must render that `Val` faithfully rather than re-interpreting or suppressing parts of it.
 
-The writer satisfies this contract structurally: `writeMonomial` only suppresses its `Coeff` factor when `m.Coeff == expr.OneComplex`, and opaque `Atom{int32(1)}` Vals from overflow recovery flow through `writeExpr → writeAtom` and render as literal `1`. The fail-soft policy is honored because the renderer doesn't drop anything. **Open gap (will revisit):** the corresponding multiplicative-identity collapse for parser-side `Atom{int32(1)}` factors is also absent, so `Times[1, x]` round-trips as `["Times", 1, x]` rather than `x`. Any reintroduction of suppression must restrict it to parsed `*expr.TimesExpr` children only, never opaque Vals — otherwise the §6 fail-soft policy breaks.
+The writer satisfies this contract structurally: `writeMonomial` only suppresses its `Coeff` factor when `m.Coeff == expr.OneComplex`, and opaque `Val`s flow through `writeExpr` verbatim. **Open gap (will revisit):** the multiplicative-identity collapse for parser-side `Times` children is absent, so a parsed `Times[1, x]` embedded in an opaque sub-tree round-trips through `writeExpr` as `["Times", 1, x]` rather than `x`. Any reintroduction of suppression must restrict it to parsed `*expr.TimesExpr` children only, never a monomial's opaque `Val`s — otherwise the render-faithfully contract breaks.
 
-Normalization is an optimization the calculator performs where it can. When it can't (overflow paths), the resulting Scalar is non-canonical but still algebraically equivalent to the input. Two algebraically equal Scalars produced by different paths may have different signatures and serialize to different (but equivalent) JSON — that is a documented loss-of-uniqueness in §6, not a correctness bug.
+Normalization is an optimization the calculator performs where it can. When it can't (atomised nodes whose sub-trees aren't canonicalised), the resulting Scalar is non-canonical but still algebraically equivalent to the input. Two algebraically equal Scalars produced by different paths may then have different signatures and serialize to different (but equivalent) JSON — that is the §5 Decision C1 loss-of-uniqueness, not a correctness bug.
 
 ---
 
-## 6. Overflow policy (int32-bounded coefficients)
+## 6. Exact coefficient arithmetic (int32 fast path + math/big fallback)
 
-This is the single most important trade-off: coefficient arithmetic stays
-int32-bounded rather than promoting to arbitrary precision.
+Coefficient arithmetic is **exact at any magnitude**. The representation has
+two tiers, and a value's tier is purely a storage detail, never a semantic
+bound.
 
-**Policy.** Coefficient arithmetic is performed in `int32` (with `int64`
-used internally for safe intermediate computation). When the result of an
-addition, multiplication, or rational reduction does not fit in `int32`,
-the result is **not** stored as an extended-precision number. Instead the
-offending node is atomized: the un-foldable expression is wrapped as a
-single opaque atom of `Atom.Value` type `int64` (or, if even `int64`
-would overflow, of `jsontext.Value`), and that atom enters a monomial as
-an indeterminate.
+**Policy.** Each `Rational` carries an int32 numerator/denominator pair *and*
+an optional `*big.Rat`. Operations run on the int32 fast path (with `int64`
+used for safe intermediate computation); when a reduced result does not fit
+int32, it **promotes** to `big.Rat`. When a later result fits int32 again, it
+**demotes** back. `Complex` is a pair of such `Rational`s, so it promotes
+component-wise.
 
-**Consequences.**
+**Canonical invariant.** A `Rational` uses its big field **iff** its value does
+not fit int32. This gives every value a single representation regardless of the
+arithmetic path that produced it, so:
 
-- Folding is **fail-soft**: when the coefficient ring isn't large enough,
-  the model gracefully falls back to symbolic representation rather than
-  raising an error.
-- Once a value escapes to an `int64` (or `jsontext.Value`) atom, it is
-  **non-participating** in further coefficient folding. Subsequent
-  arithmetic that touches it stays symbolic. This matches the existing
-  `int64`-non-participation invariant.
-- Strict canonical uniqueness across **algebraically equivalent** inputs
-  is **not** guaranteed when overflow is possible. Two algebraically
-  equivalent inputs that reach the int32 boundary by different paths can
-  produce different normalised outputs (one may stay folded, the other
-  may have atomized intermediates). For inputs that stay within int32,
-  uniqueness is preserved.
-- This bound matches the practical regime of the inputs this code
-  processes: Feynman-amplitude coefficients are typically small integers
-  (vertex factors, low factorials, low powers of two), and overflow is a
-  corner case rather than the common path.
+- `Add`, `Sub`, `Mul`, and `Neg` never fail — there is no overflow signal. Only
+  division carries an `ok` flag, and solely for division by zero.
+- The representation is canonical at *all* coefficient magnitudes: a value
+  computed two different ways (one staying in int32, one passing through big
+  and demoting) lands in the same representation, so it serialises identically
+  and a coefficient of exactly `1` is recognised as the identity and suppressed.
+
+**Serialisation.** A big integer is emitted as a bare JSON integer of full
+precision; a big `Rational` as `["Rational", num, den]` with full-precision
+operands; `Complex` as `["Complex", re, im]`. Input integer literals that
+exceed int32 are parsed straight into the ring (as `*big.Int` atoms) and fold
+like any other integer.
+
+**Non-integers stay opaque.** There is no float coefficient ring: a decimal or
+scientific-notation literal (`0.5`, `1e20`) is kept as a `jsontext.Value` atom
+and never participates in arithmetic (§7).
 
 ---
 
@@ -246,9 +234,12 @@ an indeterminate.
 
 What this model **does** give you:
 
-- A unique canonical form for every scalar that stays within the int32
-  coefficient ring and the Laurent-polynomial-with-opaque-atoms
+- A unique canonical form for every scalar within the coefficient ring
+  (exact at any magnitude) and the Laurent-polynomial-with-opaque-atoms
   structure.
+- Exact integer and Gaussian-rational arithmetic of unbounded magnitude:
+  the int32 fast path promotes to `math/big` and demotes back transparently
+  (§6), so no result is ever lost to overflow.
 - Free resolution of three classes of arithmetic gap: numeric factor
   ordering, Rational/Complex folding among coefficient values, and
   zero-in-product propagation.
@@ -269,13 +260,6 @@ What this model **does not** give you, and why each loss is acceptable:
   fold to `1`. Floats and named real constants (`Pi`, `0.5`, …) live
   outside the coefficient ring and remain opaque atoms. Users who want
   exact arithmetic should write `Rational[1, 2]`, not `0.5`.
-- **No arbitrary-precision integers.** Once a coefficient computation
-  exceeds int32, the result becomes opaque. Justification: practical
-  inputs do not exercise this regime, and big-int arithmetic adds
-  per-operation allocation cost that this codebase has explicit
-  preferences against (see CLAUDE.md §6 — "Optimize allocations
-  aggressively"). The fail-soft policy means correctness is preserved;
-  only simplification opportunity is lost on the overflow path.
 - **No simplification of negative-power identities.** `Power[a, -2]`
   and `Rational[1, Power[a, 2]]` are distinct opaque atoms even though
   they are algebraically equal. Justification: same as the
@@ -285,6 +269,6 @@ What this model **does not** give you, and why each loss is acceptable:
   model keeps `Power[S, 0]` opaque rather than risk changing semantics
   on the `S = 0` path. See §4.3.
 
-These losses are the price of the int32 / Laurent-polynomial-with-atoms
+These losses are the price of the Laurent-polynomial-with-atoms
 design. They are bounded, predictable, and orthogonal to the kinds of
 simplification the contractor's input language was designed to express.

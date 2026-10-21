@@ -450,7 +450,7 @@
     "name": "42-int32-overflow",
     "input": ["Times", 100000, 100000],
     "outputs": [
-      ["Times", 100000, 100000]
+      10000000000
     ]
   },
   {
@@ -477,7 +477,7 @@
     "name": "45-plus-int32-overflow",
     "input": ["Plus", 2147483647, 1],
     "outputs": [
-      ["Plus", 2147483647, 1]
+      2147483648
     ]
   },
   {
@@ -498,24 +498,21 @@
     "name": "48-rational-mul-overflow",
     "input": ["Times", ["Rational", 100000, 1], ["Rational", 100000, 1]],
     "outputs": [
-      ["Times", 100000, ["Rational", 100000, 1]]
+      10000000000
     ]
   },
   {
     "name": "49-complex-mul-real-overflow",
     "input": ["Times", ["Complex", 100000, 1], ["Complex", 100000, 1]],
     "outputs": [
-      ["Times", ["Complex", 100000, 1], ["Complex", 100000, 1]]
+      ["Complex", 9999999999, 200000]
     ]
   },
   {
     "name": "50-times-plus-overflow-symbol",
     "input": ["Times", ["Plus", 2147483647, 1], "κ"],
     "outputs": [
-      ["Plus",
-        ["Times", 2147483647, "κ"],
-        ["Times", "κ", 1]
-      ]
+      ["Times", 2147483648, "κ"]
     ]
   },
   {
@@ -824,6 +821,90 @@
     "input": ["Times", ["Rational", 1, 2], ["Plus", ["Times", ["Pair", ["LorentzIndex", "μ", "D"], ["LorentzIndex", "α", "D"]], ["Pair", ["LorentzIndex", "ν", "D"], ["LorentzIndex", "β", "D"]]], ["Times", ["Pair", ["LorentzIndex", "μ", "D"], ["LorentzIndex", "β", "D"]], ["Pair", ["LorentzIndex", "ν", "D"], ["LorentzIndex", "α", "D"]]], ["Times", -1, ["Pair", ["LorentzIndex", "μ", "D"], ["LorentzIndex", "ν", "D"]], ["Pair", ["LorentzIndex", "α", "D"], ["LorentzIndex", "β", "D"]]]], ["Pair", ["LorentzIndex", "μ", "D"], ["LorentzIndex", "ν", "D"]]],
     "outputs": [
       ["Times", ["Plus", 1, ["Times", ["Rational", -1, 2], "D"]], ["Pair", ["LorentzIndex", "α", "D"], ["LorentzIndex", "β", "D"]]]
+    ]
+  },
+  {
+    "name": "91-big-literal-fold",
+    "input": ["Times", 10000000000, 2],
+    "outputs": [
+      20000000000
+    ]
+  },
+  {
+    "name": "92-big-intermediate-demotes-to-int32",
+    "input": ["Times", 10000000000, ["Rational", 1, 10000000000]],
+    "outputs": [
+      1
+    ]
+  },
+  {
+    "name": "93-big-rational-survives",
+    "input": ["Times", ["Rational", 10000000000, 1], ["Rational", 1, 30000000001]],
+    "outputs": [
+      ["Rational", 10000000000, 30000000001]
+    ]
+  },
+  {
+    "name": "94-contraction-coeff-crosses-int32",
+    "input": ["Times", 600000000, ["Pair", ["LorentzIndex", "mu"], ["LorentzIndex", "mu"]]],
+    "outputs": [
+      2400000000
+    ]
+  },
+  {
+    "name": "95-big-sum-cancels-to-zero-drops",
+    "input": ["Plus", ["Times", 10000000000, "x"], ["Times", -10000000000, "x"], "y"],
+    "outputs": [
+      "y"
+    ]
+  },
+  {
+    "name": "96-big-coeff-reduces-to-one-suppressed",
+    "input": ["Times", 10000000000, ["Rational", 1, 10000000000], "x"],
+    "outputs": [
+      "x"
+    ]
+  },
+  {
+    "name": "97-neg-min-int32-promotes",
+    "input": ["Times", -1, -2147483648],
+    "outputs": [
+      2147483648
+    ]
+  },
+  {
+    "name": "98-big-intermediate-demotes-to-small-int",
+    "input": ["Times", 30000000000, ["Rational", 1, 6000000000]],
+    "outputs": [
+      5
+    ]
+  },
+  {
+    "name": "99-rational-zero-denom-opaque",
+    "input": ["Plus", ["Rational", 1, 0], ["Rational", 1, 0]],
+    "outputs": [
+      ["Times", 2, ["Rational", 1, 0]]
+    ]
+  },
+  {
+    "name": "100-big-coeff-one-suppressed-on-pair",
+    "input": ["Times", 10000000000, ["Rational", 1, 10000000000], ["Pair", ["LorentzIndex", "a"], ["LorentzIndex", "b"]]],
+    "outputs": [
+      ["Pair", ["LorentzIndex", "a"], ["LorentzIndex", "b"]]
+    ]
+  },
+  {
+    "name": "101-big-literal-in-opaque",
+    "input": ["Times", ["f", 10000000000], ["Power", "x", 10000000000]],
+    "outputs": [
+      ["Times", ["Power", "x", 10000000000], ["f", 10000000000]]
+    ]
+  },
+  {
+    "name": "102-rational-literal-reduction-edges",
+    "input": ["Plus", ["Times", ["Rational", -2147483648, -1], "a"], ["Times", ["Rational", 1, -2147483648], "b"], ["Times", ["Rational", 4, -6], "c"], ["Times", ["Rational", 2, 4], "d"]],
+    "outputs": [
+      ["Plus", ["Times", 2147483648, "a"], ["Times", ["Rational", -1, 2147483648], "b"], ["Times", ["Rational", -2, 3], "c"], ["Times", ["Rational", 1, 2], "d"]]
     ]
   }
 ]

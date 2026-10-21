@@ -6,7 +6,7 @@ Authoritative deeper references:
   docs/architecture.md         — pipeline, package layout, component invariants
   docs/samples.md              — worked examples + known-flaw catalog
   docs/scalar-normal-form.md   — coefficient algebra (incl. §5b render-faithfully contract)
-  docs/known-limitations.md    — parsing, output-ordering, momentum, opaque, overflow gaps
+  docs/known-limitations.md    — parsing, output-ordering, momentum, opaque, non-integer-literal gaps
   docs/feyncalc-notation.md    — FeynCalc-grounded physics interpretation of the input
                                  language (dimension labels, Pair = metric / vector / scalar
                                  product, contraction rules) + Mathematica StartProcess wrapper
@@ -15,7 +15,7 @@ Authoritative deeper references:
 
 ## Critical Facts — Read First
 
-1. **Index contraction kernel.** Contracts repeated Lorentz tensor indices, folds coefficient arithmetic (int32 / Rational / Complex) via `eval.Calculator`, drops zero monomials, sorts output by canonical signature. `Power[_, 0]` is intentionally opaque (`0^0` ambiguity). → `docs/architecture.md` §Pipeline, §Why coefficients flow as `expr.Scalar`; `docs/scalar-normal-form.md` §4.3.
+1. **Index contraction kernel.** Contracts repeated Lorentz tensor indices, folds coefficient arithmetic (exact Rational / Complex — int32 fast path + `math/big` fallback) via `eval.Calculator`, drops zero monomials, sorts output by canonical signature. `Power[_, 0]` is intentionally opaque (`0^0` ambiguity). → `docs/architecture.md` §Pipeline, §Why coefficients flow as `expr.Scalar`; `docs/scalar-normal-form.md` §4.3, §6.
 2. **`HasD` flag changes contraction result.** `LorentzIndex{HasD: false}` → contracted pair emits `4`. `LorentzIndex{HasD: true}` → emits `"D"`. `Momentum.HasD` carries through to output but does not affect contraction. `HasD` mirrors FeynCalc's *dimension label* (`LorentzIndex[mu, D]` / `Momentum[p, D]` — `D = 4 − 2ε` in dimensional regularization); it is **not** a derivative-index marker. → `docs/feyncalc-notation.md` §Dimension-Aware Lorentz Contractions.
 3. **Signatures, not custom equality.** `LorentzIndex.Signature`, `Momentum.Signature`, and merger keys are canonical JSON strings produced by `codec.Signer` from the *output* representation. Never use `json.Marshal` on internal structs for grouping; call `Signer.Pairs(...)`. → `docs/architecture.md` §Signatures.
 4. **`Term` is effectively immutable in flight.** `ContractAndNormalize` allocates a fresh `term.Pairs` slice and a fresh `Coeff` Scalar (via `Calculator.Mul`), so workers can hand the original `Term` along without coordination. `Monomial.Opaques` arrays are never mutated after creation. → `docs/architecture.md` §Component Invariants > Contractor.
@@ -23,7 +23,7 @@ Authoritative deeper references:
 6. **Optimize allocations aggressively.** Reuse buffers with `buf = buf[:0]` rather than reallocating. Use `unsafe.String(unsafe.SliceData(b), len(b))` for zero-copy `[]byte → string` (one site: `expr/expr.go`'s `atomSignature`). Use `append(make([]T, 0, n), ...)` for sized copies. GC scanning currently dominates CPU; the parser is the top alloc source — optimise parser first.
 7. **Build requires `GOEXPERIMENT=jsonv2`.** Use `make build` (writes to `./bin/contractor`). A bare `GOEXPERIMENT=jsonv2 go build ./cmd/contractor` drops the binary in the *current directory* — prefer the Makefile target. NOTE: `json.MarshalEncode(enc, v)` does not exist in this jsonv2 surface; use `json.Marshal(v)` + `enc.WriteValue(jsontext.Value(b))` instead.
 8. **I/O is Mathematica ExpressionJSON via stdio.** One JSON expression in, one out. No Go test files exist — verification goes through the `tester` agent, which runs `./scripts/run-tests.sh` (build + `scripts/check-fixtures.py`) against the bundled fixture `scripts/sample-fixtures.json`. See `docs/samples.md` for the worked examples (regular + known-flaw rows).
-9. **Components must render faithfully; normal form is optional.** `eval.Calculator`'s overflow recovery (per `scalar-normal-form.md` §6) can produce non-canonical Scalars — e.g. an `Atom{int32(1)}` opaque that, in normal form, would have folded into the coefficient. Downstream components (writer, signer, merger) treat their input as "sum of parts" and never silently drop a factor; see `docs/scalar-normal-form.md` §5b. The known residuals are samples 42, 45, 48, 49, 50 (all data-preserving but non-canonical). The writer satisfies the contract structurally: `writeMonomial` only suppresses its `Coeff` factor when `m.Coeff == expr.OneComplex`, and `Atom{int32(1)}` opaques flow through `writeExpr → writeAtom` unsuppressed. **Open gap (will revisit):** parsed `Times[1, x]` therefore round-trips as `["Times", 1, x]` rather than `x`; the multiplicative-identity collapse for parsed-Times children is not implemented. The natural site if it lands is `writeExpr`'s `*expr.TimesExpr` arm (filter `Atom{int32(1)}` children of parsed Times only, never opaque `Val`s) — otherwise fail-soft breaks.
+9. **Components must render faithfully; normal form is optional.** The atomisation gap (`scalar-normal-form.md` §5 Decision C1) can leave a monomial carrying an opaque `Val` that is not itself canonical — e.g. a parsed `Rational[Plus[2,3], x]` or `Times[1, x]` whose sub-trees were signed as-is. Downstream components (writer, signer, merger) treat their input as "sum of parts" and render each `Val` verbatim, never silently dropping or re-interpreting a factor; see `docs/scalar-normal-form.md` §5b. The writer satisfies the contract structurally: `writeMonomial` only suppresses its `Coeff` factor when `m.Coeff == expr.OneComplex`, and opaque `Val`s flow through `writeExpr` unsuppressed. **Open gap (will revisit):** a parsed `Times[1, x]` embedded in an opaque sub-tree round-trips as `["Times", 1, x]` rather than `x`; the multiplicative-identity collapse for parsed-Times children is not implemented. The natural site if it lands is `writeExpr`'s `*expr.TimesExpr` arm (filter `Atom{int32(1)}` children of parsed Times only, never a monomial's opaque `Val`s) — otherwise render-faithfully breaks.
 
 ---
 
@@ -64,7 +64,7 @@ type Momentum struct {
     Signature string // canonical JSON via codec.Signer.Momentum
 }
 
-// Opaque scalar leaf. Value ∈ {string, int32, int64, jsontext.Value, []any}.
+// Opaque scalar leaf. Value ∈ {string, int32, *big.Int, jsontext.Value, []any}.
 type Atom struct {
     Value     any
     Signature string // canonical via expr.atomSignature
@@ -80,7 +80,7 @@ type PowerExpr struct {
 }
 ```
 
-**`Writer` is stateless: just an encoder.** Two exported methods, both panic-protected at the entry: `WriteExpr(expr.Expr) error` emits any Expr as a fixed-shape JSON value (no flatten, no identity collapse — canonical Mathematica never nests Times-in-Times or Plus-in-Plus, so straight emission is canonical). `WriteTerm(expr.Term) error` renders the Term cascade `Times[Coeff_factors..., Pair...]` and is the merger's path to output. The Scalar-arithmetic multiplicative identity is `expr.OneScalar` (one monomial with coefficient `1+0i` and no opaques); the multiplicative-identity `Complex` is `expr.OneComplex`.
+**`Writer` wraps an encoder plus a reusable big-int scratch buffer, so it is single-goroutine** (each `codec.Signer` owns one; the merger uses one in its single-threaded `Flush`). The scratch backs allocation-free `writeBigInt` (`big.Int.Append`); it is safe because `enc.WriteValue` copies its argument before returning. Two exported methods, both panic-protected at the entry: `WriteExpr(expr.Expr) error` emits any Expr as a fixed-shape JSON value (no flatten, no identity collapse — canonical Mathematica never nests Times-in-Times or Plus-in-Plus, so straight emission is canonical). `WriteTerm(expr.Term) error` renders the Term cascade `Times[Coeff_factors..., Pair...]` and is the merger's path to output. The Scalar-arithmetic multiplicative identity is `expr.OneScalar` (one monomial with coefficient `1+0i` and no opaques); the multiplicative-identity `Complex` is `expr.OneComplex`.
 
 **The Term cascade is three input-type-named layers.** `WriteTerm(t)` picks one of: single-Monomial Coeff → delegate to `writeMonomial(t.Coeff.Monomials[0], t.Pairs...)`; no Pairs → delegate to `writeScalar(t.Coeff)`; otherwise emit `["Times", scalar, pair, ...]`. `writeScalar(s)` emits `Plus[Monomial...]` with `0 → 0`, `1 → writeMonomial`, `N → ["Plus", ...]`. `writeMonomial(m, extraPairs ...expr.Pair)` emits `Times[(Coeff if != 1), Opaque..., extraPair...]` with `0 → 1`, `1 → bare element`, `N → ["Times", ...]` — `extraPairs` is only non-empty at WriteTerm's single-Monomial call. Each level pre-counts items from `len(m.Opaques) + len(extraPairs) + (Coeff != OneComplex ? 1 : 0)`; no lookahead, no state.
 
@@ -118,7 +118,7 @@ The second term's repeated `mu` contracts and the merger collapses `3 * 4 → 12
 ]
 ```
 
-`["LorentzIndex", "mu", "D"]` sets `HasD=true` (contracts to `"D"`); the two-arg form sets `HasD=false` (contracts to `4`). For the full catalog see `docs/samples.md`. User-visible limitations of the contractor (parsing scope, output-ordering non-determinism, Momentum non-expansion, opaque normalisation gap, integer overflow) are catalogued in `docs/known-limitations.md`.
+`["LorentzIndex", "mu", "D"]` sets `HasD=true` (contracts to `"D"`); the two-arg form sets `HasD=false` (contracts to `4`). For the full catalog see `docs/samples.md`. User-visible limitations of the contractor (parsing scope, output-ordering non-determinism, Momentum non-expansion, opaque normalisation gap, non-integer literals) are catalogued in `docs/known-limitations.md`.
 
 ---
 
@@ -144,7 +144,7 @@ The second term's repeated `mu` contracts and the merger collapses `3 * 4 → 12
 - **The tool's own output is ASCII-only.** The diagnostic text the binary itself emits — help/usage banner, `-version` output, error messages — must be ASCII (use `-` not `—`, `...` not `…`). This does *not* constrain the contracted expression on stdout: that carries input characters through verbatim, so Unicode in the input (e.g. Greek index names) is preserved in the output. Docs and code comments may use Unicode freely.
 - **Docs and fixture `name`s are publication-grade and impersonal.** Never write a contributor's name, a local path, the generating toolchain, or a foreign suite's numbering into committed files. Keep domain content (FeynCalc notation, the math); cut provenance — at authoring time, not as a later sweep. Importing externally-supplied tests is the highest-risk trigger, because the who/where/which-tool scaffolding is exactly what you reach for while writing and exactly what must not ship.
 - **Unsafe string ops are intentional.** The `unsafe.String(unsafe.SliceData(b), len(b))` pattern in `expr/expr.go`'s `atomSignature` is deliberate zero-copy. The backing byte slice must not be modified after conversion — safety comes from `json.Marshal`'s returned slice being a fresh local allocation never shared with another goroutine, not from any mutex scope.
-- **Read `codec/parser.go` before writing any scalar-type dispatch.** `expr/expr.go` says `NewAtom` accepts `int32 | int64 | string | jsontext.Value | []any`; the Atom.Value type map in `docs/architecture.md` §Component Invariants > Parser says which of those actually arrives where. Both must be understood to write correct type-switch logic anywhere in `expr` / `codec` / `eval`.
+- **Read `codec/parser.go` before writing any scalar-type dispatch.** `expr/expr.go` says `NewAtom` accepts `int32 | *big.Int | string | jsontext.Value | []any`; the Atom.Value type map in `docs/architecture.md` §Component Invariants > Parser says which of those actually arrives where. Both must be understood to write correct type-switch logic anywhere in `expr` / `codec` / `eval`.
 
 ---
 

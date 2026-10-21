@@ -5,6 +5,7 @@ package codec
 import (
 	"encoding/json"
 	"encoding/json/jsontext"
+	"math/big"
 
 	"github.com/izokina/contractor/pkg/literal"
 	"github.com/izokina/contractor/pkg/pipeline/expr"
@@ -15,7 +16,8 @@ import (
 // a Term's synthetic Times/Plus cascade with the flatten and
 // identity-collapse needed to produce canonical output.
 type Writer struct {
-	enc *jsontext.Encoder
+	enc     *jsontext.Encoder
+	scratch []byte // reused by writeBigInt; makes Writer single-goroutine
 }
 
 func NewWriter(enc *jsontext.Encoder) *Writer {
@@ -146,8 +148,8 @@ func (w *Writer) writeAtom(a *expr.Atom) {
 		w.writeToken(jsontext.String(v))
 	case int32:
 		w.writeToken(jsontext.Int(int64(v)))
-	case int64:
-		w.writeToken(jsontext.Int(v))
+	case *big.Int:
+		w.writeBigInt(v)
 	case jsontext.Value:
 		w.writeValue(v)
 	default:
@@ -170,7 +172,7 @@ func (w *Writer) writePower(p *expr.PowerExpr) {
 }
 
 func (w *Writer) writeComplex(z expr.Complex) {
-	if z.Im.Num == 0 {
+	if z.Im.IsZero() {
 		w.writeRational(z.Re)
 		return
 	}
@@ -182,15 +184,32 @@ func (w *Writer) writeComplex(z expr.Complex) {
 }
 
 func (w *Writer) writeRational(r expr.Rational) {
-	if r.Den == 1 {
-		w.writeToken(jsontext.Int(int64(r.Num)))
+	if q := r.Big(); q != nil {
+		if q.IsInt() {
+			w.writeBigInt(q.Num())
+			return
+		}
+		w.openArray(literal.Rational)
+		w.writeBigInt(q.Num())
+		w.writeBigInt(q.Denom())
+		w.writeToken(jsontext.EndArray)
+		return
+	}
+
+	if r.Den() == 1 {
+		w.writeToken(jsontext.Int(int64(r.Num())))
 		return
 	}
 
 	w.openArray(literal.Rational)
-	w.writeToken(jsontext.Int(int64(r.Num)))
-	w.writeToken(jsontext.Int(int64(r.Den)))
+	w.writeToken(jsontext.Int(int64(r.Num())))
+	w.writeToken(jsontext.Int(int64(r.Den())))
 	w.writeToken(jsontext.EndArray)
+}
+
+func (w *Writer) writeBigInt(x *big.Int) {
+	w.scratch = x.Append(w.scratch[:0], 10)
+	w.writeValue(jsontext.Value(w.scratch))
 }
 
 func (w *Writer) writePair(p expr.Pair) {
