@@ -57,11 +57,9 @@
     ]
   },
   {
-    "name": "06-mixed-hasd-self-pair",
+    "name": "06-mixed-dimension-pair-rejected",
     "input": ["Pair", ["LorentzIndex", "mu", "D"], ["LorentzIndex", "mu"]],
-    "outputs": [
-      ["Pair", ["LorentzIndex", "mu", "D"], ["LorentzIndex", "mu"]]
-    ]
+    "error": "mix 4- and D-dimensional"
   },
   {
     "name": "07-triple-shared-index",
@@ -905,6 +903,27 @@
     "input": ["Plus", ["Times", ["Rational", -2147483648, -1], "a"], ["Times", ["Rational", 1, -2147483648], "b"], ["Times", ["Rational", 4, -6], "c"], ["Times", ["Rational", 2, 4], "d"]],
     "outputs": [
       ["Plus", ["Times", 2147483648, "a"], ["Times", ["Rational", -1, 2147483648], "b"], ["Times", ["Rational", -2, 3], "c"], ["Times", ["Rational", 1, 2], "d"]]
+    ]
+  },
+  {
+    "name": "103-empty-times-in-plus",
+    "input": ["Plus", ["Times"], "x"],
+    "outputs": [
+      ["Plus", 1, "x"]
+    ]
+  },
+  {
+    "name": "104-empty-times-nested",
+    "input": ["Times", ["Plus", ["Times"], "a"], "b"],
+    "outputs": [
+      ["Plus", ["Times", "a", "b"], "b"]
+    ]
+  },
+  {
+    "name": "105-empty-plus-in-times",
+    "input": ["Plus", ["Times", ["Plus"], "a"], "b"],
+    "outputs": [
+      "b"
     ]
   }
 ]

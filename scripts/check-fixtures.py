@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Pipe each input from scripts/sample-fixtures.json into ./bin/contractor 20
 times and verify every run's output matches one of the entry's expected
-`outputs`. A sample is reported as a failure if any of its 20 runs diverges;
+`outputs`, or, for an entry with `"error": "<text>"`, that every run exits
+with status 1 and prints <text> on stderr. A sample is reported as a failure if any of its 20 runs diverges;
 the report shows one example bad output per failing sample plus a runs-passed
 stat.
 
@@ -78,6 +79,13 @@ def equal_modulo_top_plus(expected, actual):
     return expected == actual
 
 
+class ContractorError(RuntimeError):
+    def __init__(self, returncode, stderr):
+        super().__init__(f"exit {returncode}: {stderr}")
+        self.returncode = returncode
+        self.stderr = stderr
+
+
 def run_contractor(binary, input_obj):
     proc = subprocess.run(
         [str(binary)],
@@ -86,11 +94,13 @@ def run_contractor(binary, input_obj):
         timeout=30,
     )
     if proc.returncode != 0:
-        raise RuntimeError(
-            f"exit {proc.returncode}: "
-            f"{proc.stderr.decode(errors='replace').strip()}"
-        )
+        raise ContractorError(proc.returncode, proc.stderr.decode(errors="replace").strip())
     return proc.stdout.decode()
+
+
+def rejected_as_expected(err, message):
+    """A clean rejection exits with status 1 (a crash exits with 2) and names its reason."""
+    return isinstance(err, ContractorError) and err.returncode == 1 and message in err.stderr
 
 
 def main():
@@ -117,10 +127,12 @@ def main():
             try:
                 actual = loads(run_contractor(binary, entry["input"]))
             except Exception as e:
-                if example_bad is None and example_error is None:
+                if "error" in entry and rejected_as_expected(e, entry["error"]):
+                    passes += 1
+                elif example_bad is None and example_error is None:
                     example_error = str(e)
                 continue
-            if any(equal_modulo_top_plus(exp, actual) for exp in entry["outputs"]):
+            if any(equal_modulo_top_plus(exp, actual) for exp in entry.get("outputs", [])):
                 passes += 1
             elif example_bad is None and example_error is None:
                 example_bad = actual
@@ -132,13 +144,19 @@ def main():
     for entry, passes, actual, err in failures:
         name = entry["name"]
         header = f"FAIL {name} ({passes}/{RUNS_PER_SAMPLE} runs passed):"
+        if "error" in entry:
+            expected = f"\n  expected: exit 1 with stderr containing {entry['error']!r}"
+        else:
+            expected = "\n  expected one of:\n    " + "\n    ".join(dumps(o) for o in entry["outputs"])
         if err is not None:
-            print(f"{header} contractor error: {err}\n  input:\n    {dumps(entry['input'])}")
+            print(
+                f"{header} contractor error: {err}\n  input:\n    {dumps(entry['input'])}"
+                + (expected if "error" in entry else "")
+            )
         else:
             print(
                 f"{header}\n  input:\n    {dumps(entry['input'])}"
-                + "\n  expected one of:\n    "
-                + "\n    ".join(dumps(o) for o in entry["outputs"])
+                + expected
                 + f"\n  example actual:\n    {dumps(actual)}"
             )
     sys.exit(0 if not failures else 1)
