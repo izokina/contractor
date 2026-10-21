@@ -95,6 +95,11 @@ func main() {
 		return
 	}
 
+	if *threads < 1 {
+		fmt.Fprintf(os.Stderr, "invalid value %d for flag -threads: must be at least 1\n", *threads)
+		os.Exit(2)
+	}
+
 	if *cpuProfile != "" {
 		f, err := os.Create(*cpuProfile)
 		if err != nil {

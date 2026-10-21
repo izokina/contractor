@@ -123,6 +123,9 @@ func (p *Parser) parsePair() expr.Expr {
 	if len(p.lorentz)+len(p.momentum) != 2 {
 		panicf("Pair object is expected to have 2 arguments")
 	}
+	if !sameDimension(p.lorentz, p.momentum) {
+		panicf("Pair arguments mix 4- and D-dimensional labels")
+	}
 
 	pair := expr.Pair{}
 	pair.Lorentz = append(pair.Lorentz, p.lorentz...)
@@ -132,6 +135,17 @@ func (p *Parser) parsePair() expr.Expr {
 	p.momentum = p.momentum[:0]
 
 	return pair
+}
+
+func sameDimension(lorentz []expr.LorentzIndex, momentum []expr.Momentum) bool {
+	switch len(lorentz) {
+	case 2:
+		return lorentz[0].HasD == lorentz[1].HasD
+	case 1:
+		return lorentz[0].HasD == momentum[0].HasD
+	default:
+		return momentum[0].HasD == momentum[1].HasD
+	}
 }
 
 func (p *Parser) parseLorentzIndex() expr.LorentzIndex {
@@ -215,6 +229,7 @@ func (p *Parser) collectSources() []expr.Expr {
 	for p.peekKind() != jsontext.KindEndArray {
 		p.sBuf = append(p.sBuf, p.parseExpr())
 	}
+	p.closeArray()
 	if offset == len(p.sBuf) {
 		return nil
 	}
@@ -223,7 +238,6 @@ func (p *Parser) collectSources() []expr.Expr {
 		p.sBuf[i] = nil
 	}
 	p.sBuf = p.sBuf[:offset]
-	p.closeArray()
 	return sources
 }
 

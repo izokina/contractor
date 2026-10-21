@@ -23,7 +23,9 @@ change is part of the spec for this run; unstated drift is a regression.
 
 ### Step 2 — Update fixture if expectations shifted
 Skip for baseline. Otherwise: in `scripts/sample-fixtures.json`, edit the
-`outputs` array of affected entries — never `input`. When unsure, leave the
+`outputs` array of affected entries — never `input`. An entry with
+`"error": "<text>"` in place of `outputs` expects the input to be rejected:
+exit status 1 with <text> on stderr. When unsure, leave the
 entry alone: a stale entry surfaces as `spec shift` in Step 4 (recoverable);
 an entry edited wrong silently passes a regression (not).
 
@@ -62,7 +64,7 @@ Concise. **Do not paste the script's stdout** — that's why you exist.
 - **Reflection**: one short paragraph on suite adequacy.
 
 ## Constraints
-- Edit only `scripts/sample-fixtures.json` (only `outputs`, never `input`).
+- Edit only `scripts/sample-fixtures.json` (only `outputs` or `error`, never `input`).
   Never edit Go source, the binary, the script, or docs.
 - May read `docs/*.md` for context on canonical form, but never edit them.
 - Never read Go source. Expectations come from fixture + docs + caller's

@@ -1,12 +1,12 @@
 # Sample Inputs
 
-Small hand-verifiable inputs encoded as entries in `scripts/sample-fixtures.json`, ordered from simplest to most complex. Each entry has a `name` (the identifier used in the tables below), an `input` ExpressionJSON tree, and an `outputs` array of expected results. Verification runs through `scripts/check-fixtures.py` (driven by `bash scripts/run-tests.sh`, which builds the binary and execs the script), piping each input into `./bin/contractor` 20 times to stress-test the merger map-iteration non-determinism.
+Small hand-verifiable inputs encoded as entries in `scripts/sample-fixtures.json`, ordered from simplest to most complex. Each entry has a `name` (the identifier used in the tables below), an `input` ExpressionJSON tree, and an `outputs` array of expected results, or `"error"` holding part of the expected error message when the input must be rejected (exit status 1). Verification runs through `scripts/check-fixtures.py` (driven by `bash scripts/run-tests.sh`, which builds the binary and execs the script), piping each input into `./bin/contractor` 20 times to stress-test the merger map-iteration non-determinism.
 
 Tables with an **Output** column describe samples whose actual output should match that value structurally — byte-identical for everything except the order of addends of the outermost `Plus`. The merger groups terms by pair-key in a Go map (see [architecture.md](architecture.md) §Pipeline), so cross-pair-key addends may appear in any order across runs; that is a pass, not a regression. Order *inside* an addend (Times factors, Pair structure, monomial-sorted coefficient `Plus`) is deterministic and must byte-match.
 
 Coefficients are normalised to sum-of-monomials form (see [scalar-normal-form.md](scalar-normal-form.md)) inside `eval.TermFolder` as the parser-side Walker emits each monomial; the Merger then accumulates Scalars per pair-key via a single shared `eval.Calculator`. Outputs are signature-sorted, like-monomials are summed, and zero-coefficient monomials are dropped.
 
-Samples are organised into topical sections below; numbers are not strictly consecutive — each section's range is listed below. Sections: contraction mechanics (01–07, 67–69), parser behavior (08–18, 51–58, 64–65), coefficient folding (19–22, 62, 72–73), scalar arithmetic (23–35, 46–47, 59–61, 63, 99, 102), exact large-magnitude arithmetic (42, 45, 48–50, 91–98, 100–101), output structure (36, 70–71), combinatorial (37–39, 66), intentionally opaque (40), known implementation flaws (41, 43–44), FeynCalc internal-notation contractions (74–90).
+Samples are organised into topical sections below; numbers are not strictly consecutive — each section's range is listed below. Sections: contraction mechanics (01–07, 67–69), parser behavior (08–18, 51–58, 64–65, 103–105), coefficient folding (19–22, 62, 72–73), scalar arithmetic (23–35, 46–47, 59–61, 63, 99, 102), exact large-magnitude arithmetic (42, 45, 48–50, 91–98, 100–101), output structure (36, 70–71), combinatorial (37–39, 66), intentionally opaque (40), known implementation flaws (41, 43–44), FeynCalc internal-notation contractions (74–90).
 
 ---
 
@@ -19,7 +19,7 @@ Samples are organised into topical sections below; numbers are not strictly cons
 | `03-partial-contraction` | `Pair[a,b] * Pair[a,c] * Pair[d,e]` | `Pair[b,c] * Pair[d,e]` | `a` contracts, `d`/`e` stay free; tests multi-pair output and sort order |
 | `04-contracted-scalar-arithmetic` | `2·Pair[mu,mu] + 3·Pair[nu,nu]` | `20` | Both pairs contract to 4; `2·4=8`, `3·4=12`, `8+12=20` via integer mul then add |
 | `05-long-open-chain` | `Pair[a,b,D] * Pair[b,c,D] * Pair[c,d,D] * Pair[d,e,D]` | `Pair[a,e,D]` | Length-4 open chain collapses pairwise to a single surviving pair on the endpoints |
-| `06-mixed-hasd-self-pair` | `Pair[mu D, mu]` (one `HasD=true`, one `HasD=false`) | `["Pair", ["LorentzIndex", "mu", "D"], ["LorentzIndex", "mu"]]` | Different `HasD` flags give different LorentzIndex signatures, so the two slots are *not* the same index — no contraction fires; the Pair passes through unchanged |
+| `06-mixed-dimension-pair-rejected` | `Pair[mu D, mu]` (one `HasD=true`, one `HasD=false`) | *rejected* | A `Pair` whose arguments carry different dimension labels is malformed input; the contractor exits non-zero instead of guessing a contraction |
 | `07-triple-shared-index` | `Pair[a,b]·Pair[a,c]·Pair[a,d]` (all `HasD=true`) | `Pair[a,d,D] * Pair[b,c,D]` | `a` appears three times; the first two pairs contract on `a`, the third's `a` is "already consumed" and that pair survives free with `a` as a remaining index |
 | `67-five-pair-closed-loop` | `Pair[a,b,D]·Pair[b,c,D]·Pair[c,d,D]·Pair[d,e,D]·Pair[e,a,D]` | `"D"` | Length-5 closed loop; extends sample 02 (length-3) to verify chain length doesn't change the single-`D` output |
 | `68-pair-two-momenta-passthrough` | `Pair[Momentum p, Momentum q]` (both `HasD=true`) | `["Pair", ["Momentum", "p", "D"], ["Momentum", "q", "D"]]` | Pair with no Lorentz indices; nothing to contract, the pair passes through with momenta sorted by `Signer.Momentum` byte-signature |
@@ -52,6 +52,9 @@ Samples are organised into topical sections below; numbers are not strictly cons
 | `58-power-zero-zero` | `Power[0, 0]` | `["Power", 0, 0]` | `0^0` is undefined; per §4.3 zero exponent is atomized regardless of base |
 | `64-times-of-times-flatten` | `Times[Times[a, b], Times[c, d]]` | `["Times", "a", "b", "c", "d"]` | Walker flattens nested same-context Times during expansion; the four leaves end up in a single monomial's opaque slice |
 | `65-plus-of-plus-flatten` | `Plus[Plus[a, b], Plus[c, d]]` | `["Plus", "a", "b", "c", "d"]` | Symmetric to 64 for Plus; each leaf becomes its own monomial in the merger's empty-pair-key Scalar |
+| `103-empty-times-in-plus` | `Plus[Times[], x]` | `["Plus", 1, "x"]` | An empty `Times` is the empty product `1`; parsing continues past its closing bracket, so the following `x` is kept |
+| `104-empty-times-nested` | `Times[Plus[Times[], a], b]` | `["Plus", ["Times", "a", "b"], "b"]` | Same as 103 one level down: `(1 + a)·b` distributes to `b + a·b`; checks the enclosing `Plus` and `Times` both see all their children |
+| `105-empty-plus-in-times` | `Plus[Times[Plus[], a], b]` | `"b"` | An empty `Plus` is the empty sum `0`, so `Times[Plus[], a]` vanishes; the following addend `b` is still parsed |
 
 ---
 
