@@ -925,5 +925,103 @@
     "outputs": [
       "b"
     ]
+  },
+  {
+    "name": "106-nested-plus-mixed-keys",
+    "input": ["Plus", "x", "y", ["Times", "z", ["Pair", ["LorentzIndex", "a", "D"], ["LorentzIndex", "b", "D"]]]],
+    "outputs": [
+      ["Plus", ["Plus", "x", "y"], ["Times", "z", ["Pair", ["LorentzIndex", "a", "D"], ["LorentzIndex", "b", "D"]]]]
+    ]
+  },
+  {
+    "name": "107-metric-squared",
+    "input": ["Plus", ["Power", ["Pair", ["LorentzIndex", "m", "D"], ["LorentzIndex", "n", "D"]], 2], ["Times", "x", ["Power", ["Pair", ["LorentzIndex", "m"], ["LorentzIndex", "n"]], 2]]],
+    "outputs": [
+      ["Plus", "D", ["Times", 4, "x"]]
+    ]
+  },
+  {
+    "name": "108-vector-squared",
+    "input": ["Power", ["Pair", ["LorentzIndex", "μ", "D"], ["Momentum", "p", "D"]], 2],
+    "outputs": [
+      ["Pair", ["Momentum", "p", "D"], ["Momentum", "p", "D"]]
+    ]
+  },
+  {
+    "name": "109-square-of-tensor-sum",
+    "input": ["Power", ["Plus", ["Pair", ["LorentzIndex", "a", "D"], ["LorentzIndex", "b", "D"]], ["Times", "x", ["Pair", ["LorentzIndex", "a", "D"], ["Momentum", "p", "D"]], ["Pair", ["LorentzIndex", "b", "D"], ["Momentum", "q", "D"]]]], 2],
+    "outputs": [
+      ["Plus", "D", ["Times", 2, "x", ["Pair", ["Momentum", "p", "D"], ["Momentum", "q", "D"]]], ["Times", "x", "x", ["Pair", ["Momentum", "p", "D"], ["Momentum", "p", "D"]], ["Pair", ["Momentum", "q", "D"], ["Momentum", "q", "D"]]]]
+    ]
+  },
+  {
+    "name": "110-two-pair-loop",
+    "input": ["Times", ["Pair", ["LorentzIndex", "μ"], ["LorentzIndex", "ν"]], ["Pair", ["LorentzIndex", "ν"], ["LorentzIndex", "μ"]]],
+    "outputs": [
+      4
+    ]
+  },
+  {
+    "name": "111-contracted-cancels-plain",
+    "input": ["Plus", ["Times", ["Pair", ["LorentzIndex", "a", "D"], ["LorentzIndex", "b", "D"]], ["Pair", ["LorentzIndex", "b", "D"], ["LorentzIndex", "c", "D"]]], ["Times", -1, ["Pair", ["LorentzIndex", "a", "D"], ["LorentzIndex", "c", "D"]]]],
+    "outputs": [
+      0
+    ]
+  },
+  {
+    "name": "112-contracted-merges-plain",
+    "input": ["Plus", ["Times", "x", ["Pair", ["LorentzIndex", "a", "D"], ["LorentzIndex", "c", "D"]]], ["Times", ["Pair", ["LorentzIndex", "a", "D"], ["LorentzIndex", "b", "D"]], ["Pair", ["LorentzIndex", "b", "D"], ["LorentzIndex", "c", "D"]]]],
+    "outputs": [
+      ["Times", ["Plus", 1, "x"], ["Pair", ["LorentzIndex", "a", "D"], ["LorentzIndex", "c", "D"]]]
+    ]
+  },
+  {
+    "name": "113-complex-powers",
+    "input": ["Plus", ["Power", ["Complex", 0, 1], 2], ["Times", "x", ["Power", ["Complex", 1, 1], 4]]],
+    "outputs": [
+      ["Plus", -1, ["Times", -4, "x"]]
+    ]
+  },
+  {
+    "name": "114-power-int32-boundary",
+    "input": ["Plus", ["Times", ["Power", -2, 31], "a"], ["Times", ["Power", 2, 31], "b"]],
+    "outputs": [
+      ["Plus", ["Times", -2147483648, "a"], ["Times", 2147483648, "b"]]
+    ]
+  },
+  {
+    "name": "115-escaped-unicode-symbols",
+    "input": ["Plus", "a\"b", "a\"b", "é"],
+    "outputs": [
+      ["Plus", ["Times", 2, "a\"b"], "é"]
+    ]
+  },
+  {
+    "name": "116-float-spellings-distinct",
+    "input": ["Plus", 0.5, 0.50, 5e-1],
+    "outputs": [
+      ["Plus", 0.5, 0.50, 5e-1]
+    ]
+  },
+  {
+    "name": "117-momentum-first-pair",
+    "input": ["Times", ["Pair", ["Momentum", "p", "D"], ["LorentzIndex", "μ", "D"]], ["Pair", ["Momentum", "q", "D"], ["LorentzIndex", "ν", "D"]]],
+    "outputs": [
+      ["Times", ["Pair", ["LorentzIndex", "μ", "D"], ["Momentum", "p", "D"]], ["Pair", ["LorentzIndex", "ν", "D"], ["Momentum", "q", "D"]]]
+    ]
+  },
+  {
+    "name": "118-zero-tensor-term-dropped",
+    "input": ["Plus", ["Times", 0, ["Pair", ["LorentzIndex", "a", "D"], ["LorentzIndex", "b", "D"]]], "x"],
+    "outputs": [
+      "x"
+    ]
+  },
+  {
+    "name": "119-same-name-different-dimension",
+    "input": ["Times", ["Pair", ["LorentzIndex", "mu", "D"], ["LorentzIndex", "nu", "D"]], ["Pair", ["LorentzIndex", "mu"], ["LorentzIndex", "rho"]]],
+    "outputs": [
+      ["Times", ["Pair", ["LorentzIndex", "mu", "D"], ["LorentzIndex", "nu", "D"]], ["Pair", ["LorentzIndex", "mu"], ["LorentzIndex", "rho"]]]
+    ]
   }
 ]

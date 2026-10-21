@@ -53,6 +53,8 @@ The pipeline is streaming and concurrent — there is no global sort at the end.
 - Terms arrive at the merger from N pool-worker goroutines in scheduling-dependent order. This affects only which merger key gets created first, which is invisible after the map shuffle above.
 - Within a single Scalar the calculator's monomial grouping is deterministic (signature-sorted), and the contractor's per-pair sort is deterministic, so **drift only ever occurs across top-level `Plus` addends**.
 
+A related shape quirk: when the output mixes a pair-free group of two or more monomials with tensor terms, that group is written as a `Plus` nested inside the outer `Plus` (sample `106-nested-plus-mixed-keys`). Mathematica flattens it on import.
+
 Downstream consumers see no functional difference: `scripts/check-fixtures.py` compares the top-level `Plus` as a multiset, and Mathematica re-canonicalises `Plus` on import. Do not rely on byte-equality of the outermost `Plus`'s addend order.
 
 → Technical detail: [architecture.md](architecture.md) §Pipeline and §Component Invariants > Merger.

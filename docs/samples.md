@@ -4,7 +4,7 @@ Small hand-verifiable inputs encoded as entries in `scripts/sample-fixtures.json
 
 Tables with an **Output** column describe samples whose actual output should match that value structurally — byte-identical for everything except the order of addends of the outermost `Plus`. The merger groups terms by pair-key in a Go map (see [architecture.md](architecture.md) §Pipeline), so cross-pair-key addends may appear in any order across runs; that is a pass, not a regression. Order *inside* an addend (Times factors, Pair structure, monomial-sorted coefficient `Plus`) is deterministic and must byte-match.
 
-Samples are organised into topical sections below; numbers are not strictly consecutive — each section's range is listed below. Sections: contraction mechanics (01–07, 67–69), parser behavior (08–18, 51–58, 64–65, 103–105), coefficient folding (19–22, 62, 72–73), scalar arithmetic (23–35, 46–47, 59–61, 63, 99, 102), exact large-magnitude arithmetic (42, 45, 48–50, 91–98, 100–101), output structure (36, 70–71), combinatorial (37–39, 66), intentionally opaque (40), known implementation flaws (41, 43–44), FeynCalc internal-notation contractions (74–90).
+Samples are organised into topical sections below; numbers are not strictly consecutive — each section's range is listed below. Sections: contraction mechanics (01–07, 67–69, 107–108, 110, 119), parser behavior (08–18, 51–58, 64–65, 103–105, 115, 117), coefficient folding (19–22, 62, 72–73, 111–112, 118), scalar arithmetic (23–35, 46–47, 59–61, 63, 99, 102, 113, 116), exact large-magnitude arithmetic (42, 45, 48–50, 91–98, 100–101, 114), output structure (36, 70–71), combinatorial (37–39, 66, 109), intentionally opaque (40), known implementation flaws (41, 43–44, 106), FeynCalc internal-notation contractions (74–90).
 
 ---
 
@@ -18,10 +18,14 @@ Samples are organised into topical sections below; numbers are not strictly cons
 | `04-contracted-scalar-arithmetic` | `2·Pair[mu,mu] + 3·Pair[nu,nu]` | `20` | Both pairs contract to 4; `2·4=8`, `3·4=12`, `8+12=20` via integer mul then add |
 | `05-long-open-chain` | `Pair[a,b,D] * Pair[b,c,D] * Pair[c,d,D] * Pair[d,e,D]` | `Pair[a,e,D]` | Length-4 open chain collapses pairwise to a single surviving pair on the endpoints |
 | `06-mixed-dimension-pair-rejected` | `Pair[mu D, mu]` (one `HasD=true`, one `HasD=false`) | *rejected* | A `Pair` whose arguments carry different dimension labels is malformed input; the contractor exits non-zero instead of guessing a contraction |
-| `07-triple-shared-index` | `Pair[a,b]·Pair[a,c]·Pair[a,d]` (all `HasD=true`) | `Pair[a,d,D] * Pair[b,c,D]` | `a` appears three times; the first two pairs contract on `a`, the third's `a` is "already consumed" and that pair survives free with `a` as a remaining index |
+| `07-triple-shared-index` | `Pair[a,b]·Pair[a,c]·Pair[a,d]` (all `HasD=true`) | `Pair[a,d,D] * Pair[b,c,D]` | `a` appears three times, so the input is not a valid tensor expression; the row pins the contractor's greedy handling: the first two pairs contract on `a`, and the third keeps `a` as a free index |
 | `67-five-pair-closed-loop` | `Pair[a,b,D]·Pair[b,c,D]·Pair[c,d,D]·Pair[d,e,D]·Pair[e,a,D]` | `"D"` | Length-5 closed loop; extends sample 02 (length-3) to verify chain length doesn't change the single-`D` output |
 | `68-pair-two-momenta-passthrough` | `Pair[Momentum p, Momentum q]` (both `HasD=true`) | `["Pair", ["Momentum", "p", "D"], ["Momentum", "q", "D"]]` | Pair with no Lorentz indices; nothing to contract, the pair passes through with momenta sorted by `Signer.Momentum` byte-signature |
 | `69-momentum-survives-lorentz-contract` | `Pair[mu, p, D] · Pair[mu, q, D]` | `["Pair", ["Momentum", "p", "D"], ["Momentum", "q", "D"]]` | Lorentz `mu` contracts across the two pairs; both surviving Momenta merge into a single output Pair (analogue of sample 01 with mixed LorentzIndex/Momentum content) |
+| `107-metric-squared` | `Power[Pair[m,n,D], 2] + x·Power[Pair[m,n], 2]` | `["Plus", "D", ["Times", 4, "x"]]` | Well-formed square of a metric: `g_{mn}g^{mn}` is `D` in `D` dimensions and `4` in four |
+| `108-vector-squared` | `Power[Pair[μ, p, D], 2]` | `["Pair", ["Momentum", "p", "D"], ["Momentum", "p", "D"]]` | `p^μ p_μ` contracts to the scalar product `p²` |
+| `110-two-pair-loop` | `Pair[μ,ν]·Pair[ν,μ]` | `4` | The second pair shares both indices with the first, closing a two-metric loop to the trace `4` |
+| `119-same-name-different-dimension` | `Pair[mu D, nu D]·Pair[mu, rho]` | `["Times", ["Pair", ["LorentzIndex", "mu", "D"], ["LorentzIndex", "nu", "D"]], ["Pair", ["LorentzIndex", "mu"], ["LorentzIndex", "rho"]]]` | Each Pair is dimension-consistent, but `mu D` and `mu` are different indices, so nothing contracts |
 
 ---
 
@@ -29,7 +33,7 @@ Samples are organised into topical sections below; numbers are not strictly cons
 
 | Name | Input structure | Output | Tests |
 |------|----------------|--------|-------|
-| `08-power-contraction` | `Power[Pair[m,n D], 2] * Pair[m,p D]` | `"D" * Pair[m,p D]` | Parser-side Walker expands `Power[Pair, 2]` into two copies; the doubled pair self-contracts to `"D"`; the third pair survives because its `m` was already consumed by the time it is visited |
+| `08-power-contraction` | `Power[Pair[m,n D], 2] * Pair[m,p D]` | `"D" * Pair[m,p D]` | `m` appears three times, so the input is not a valid tensor expression (107 is the well-formed square); the row pins the greedy handling: the two copies of `Pair[m,n]` contract to `"D"` and the third pair keeps `m` free |
 | `09-power-zero-base` | `Power[0, 4]` | `0` | `Power[0, n]` for `n > 0` expands to `Times[0, …, 0]`; zero-in-product propagation drops the monomial; output is integer `0` |
 | `10-composite-momentum` | `Pair[mu, (-p1-p2) D] * Pair[mu, p3 D]` | `Pair[p3, (-p1-p2) D]` | Composite (sum-expression) momentum argument; LorentzIndex contracted, composite momentum survives as opaque source |
 | `11-plus-in-times` | `Times[Plus[R(1/4), -R(1/8)], Pair[mu,nu]]` | `R(1/8) * Pair[mu,nu]` | `Plus` inside `Times` distributes into separate terms in the parser; the two Rational coefficients fold to `R(1/8)` in the merger |
@@ -50,6 +54,8 @@ Samples are organised into topical sections below; numbers are not strictly cons
 | `58-power-zero-zero` | `Power[0, 0]` | `["Power", 0, 0]` | `0^0` is undefined; per §4.3 zero exponent is atomized regardless of base |
 | `64-times-of-times-flatten` | `Times[Times[a, b], Times[c, d]]` | `["Times", "a", "b", "c", "d"]` | Walker flattens nested same-context Times during expansion; the four leaves end up in a single monomial's opaque slice |
 | `65-plus-of-plus-flatten` | `Plus[Plus[a, b], Plus[c, d]]` | `["Plus", "a", "b", "c", "d"]` | Symmetric to 64 for Plus; each leaf becomes its own monomial in the merger's empty-pair-key Scalar |
+| `115-escaped-unicode-symbols` | `"a\"b" + "a\"b" + "é"` | `["Plus", ["Times", 2, "a\"b"], "é"]` | Symbols containing JSON escapes and non-ASCII characters merge by value and render back escaped |
+| `117-momentum-first-pair` | `Pair[p, μ, D]·Pair[q, ν, D]` (Momentum written first) | `["Times", ["Pair", ["LorentzIndex", "μ", "D"], ["Momentum", "p", "D"]], ["Pair", ["LorentzIndex", "ν", "D"], ["Momentum", "q", "D"]]]` | `Pair` arguments may come in either order; output puts the Lorentz index first |
 | `103-empty-times-in-plus` | `Plus[Times[], x]` | `["Plus", 1, "x"]` | An empty `Times` is the empty product `1`; parsing continues past its closing bracket, so the following `x` is kept |
 | `104-empty-times-nested` | `Times[Plus[Times[], a], b]` | `["Plus", ["Times", "a", "b"], "b"]` | Same as 103 one level down: `(1 + a)·b` distributes to `b + a·b`; checks the enclosing `Plus` and `Times` both see all their children |
 | `105-empty-plus-in-times` | `Plus[Times[Plus[], a], b]` | `"b"` | An empty `Plus` is the empty sum `0`, so `Times[Plus[], a]` vanishes; the following addend `b` is still parsed |
@@ -69,6 +75,9 @@ The `eval.Calculator` groups monomials by their joint atom-signature, folds coef
 | `62-times-neg-one-neg-one-symbol` | `Times[-1, -1, "κ"]` | `"κ"` | Sign cancellation: `(-1)·(-1) = 1`, the multiplicative identity is suppressed, leaving the bare opaque |
 | `72-times-mixed-coeff-symbols` | `Times[2, "a", 3, "b"]` | `["Times", 6, "a", "b"]` | Integer factors fold (`2·3 = 6`) regardless of position among the Times children; opaques sort by signature after the coefficient |
 | `73-plus-cancellation-with-survivor` | `2·x + 3·y + (-2)·x` | `["Times", 3, "y"]` | Like-monomial (`x`) coefficients sum to zero and the monomial is dropped; the surviving `3·y` renders as a single-monomial Term |
+| `111-contracted-cancels-plain` | `Pair[a,b,D]·Pair[b,c,D] − Pair[a,c,D]` | `0` | The contracted first term lands on the same pair-key as the second and cancels it in the merger |
+| `112-contracted-merges-plain` | `x·Pair[a,c,D] + Pair[a,b,D]·Pair[b,c,D]` | `["Times", ["Plus", 1, "x"], ["Pair", ["LorentzIndex", "a", "D"], ["LorentzIndex", "c", "D"]]]` | A contracted term merges with an uncontracted one carrying the same pair, giving a multi-monomial coefficient |
+| `118-zero-tensor-term-dropped` | `0·Pair[a,b,D] + x` | `"x"` | A zero coefficient on a tensor term leaves no `0·Pair` or empty group behind |
 
 ---
 
@@ -86,10 +95,11 @@ The `eval.Calculator` groups monomials by their joint atom-signature, folds coef
 | `28-rational-cascade` | `R(1/2) * R(1/2) * R(1/2) * R(1/2) * Pair[mu,nu,D]` | `R(1/16) * Pair[mu,nu,D]` | Cascading Rational multiplication anchored by a non-contracting Pair |
 | `29-rational-symbolic-numer` | `Rational["x", 4]` | `["Rational", "x", 4]` | §4.4: symbolic numerator → not in coefficient ring → atomized; opaque atom is emitted as-is |
 | `30-float-times-symbol` | `Times[0.5, "κ"]` | `["Times", "κ", 0.5]` | §7: floats are opaque atoms (there is no float coefficient ring); `0.5` carries through as a `jsontext.Value` atom |
+| `116-float-spellings-distinct` | `0.5 + 0.50 + 5e-1` | `["Plus", 0.5, 0.50, 5e-1]` | Floats merge only when byte-identical: three spellings of one value stay three opaque atoms, each rendered as written |
 | `31-complex-mul-conjugate` | `(1+i) · (1-i)` | `2` | Complex conjugate product: `(1+i)(1−i) = 1 − i² = 2`; tests Complex multiplication with both nonzero real and imaginary parts |
 | `32-rational-mul-needs-gcd` | `Rational[2, 3] · Rational[3, 4]` | `Rational[1, 2]` | Rational multiplication: `(2·3)/(3·4) = 6/12` reduces to `Rational[1, 2]` via gcd |
 | `33-rational-mul-collapses-to-int` | `Rational[2, 3] · Rational[3, 2]` | `1` | Rational multiplication collapses to integer when `gcd` reduction yields `q = 1` |
-| `34-power-pair-cubed` | `Power[Pair[m,n,D], 3]` | `"D" * Pair[m,n,D]` | Cube of a Pair: parser-side Walker expands to three copies; first two contract on shared `m,n` to `"D"`, third survives free (analogous to sample 08 with one extra copy) |
+| `34-power-pair-cubed` | `Power[Pair[m,n,D], 3]` | `"D" * Pair[m,n,D]` | Each index appears three times, so the input is not a valid tensor expression; the row pins the greedy handling: two copies contract to `"D"` and the third survives |
 | `35-zero-distribution` | `Times[Plus[1, -1], "κ"]` | `0` | Inner `Plus[1, -1]` folds to `0`; `Times[0, κ]` gives a zero-coefficient monomial which is dropped → empty Scalar → integer `0` |
 | `46-rational-add-overflow` | `Rational[1, 100000] + Rational[1, 100000]` | `Rational[1, 50000]` | Rational addition is followed by gcd reduction (§3 invariant `gcd(\|p\|,q)=1`); after reduction the result `2/100000` collapses to `1/50000`, fitting back inside the int32 fast path |
 | `47-rational-add-mixed-denom` | `Rational[1, 3] + Rational[1, 6]` | `Rational[1, 2]` | Mixed-denominator Rational addition: lcm of denominators is `6`, sum is `3/6`, gcd reduction yields `1/2`; same code path as sample 46 with mixed denominators |
@@ -97,6 +107,7 @@ The `eval.Calculator` groups monomials by their joint atom-signature, folds coef
 | `60-complex-zero-zero` | `Complex[0, 0]` | `0` | §3 invariant `b = 0` collapses Complex to its real part; with real also `0`, the result is integer `0` |
 | `61-complex-rational-rational` | `Complex[R(1/2), R(1/4)]` | `["Complex", ["Rational", 1, 2], ["Rational", 1, 4]]` | Both real and imag are reduced Rationals — both inside the coefficient ring per §4.5; result is a single Complex coefficient |
 | `63-plus-complex-complex` | `Complex[1, 2] + Complex[3, 4]` | `["Complex", 4, 6]` | Direct Complex addition; both fold to coefficients, sum is computed in the ring |
+| `113-complex-powers` | `Power[Complex[0, 1], 2] + x·Power[Complex[1, 1], 4]` | `["Plus", -1, ["Times", -4, "x"]]` | `i² = −1` and `(1+i)⁴ = −4` through Power expansion; purely real results collapse to integers |
 | `99-rational-zero-denom-opaque` | `Rational[1, 0] + Rational[1, 0]` | `["Times", 2, ["Rational", 1, 0]]` | §4.4: `B = 0` is outside the coefficient ring, so `Rational[1, 0]` stays an opaque atom; the two copies merge as like monomials |
 | `102-rational-literal-reduction-edges` | `R(-2147483648/-1)·a + R(1/-2147483648)·b + R(4/-6)·c + R(2/4)·d` | `Plus[2147483648·a, R(-1/2147483648)·b, R(-2/3)·c, R(1/2)·d]` | §3 reduction of int32 literals at the int32 boundary: moving the sign off a negative denominator can push `MinInt32` out of int32 range, promoting the value to big (`a`, `b`); ordinary sign-flip and gcd reduction stay small (`c`, `d`) |
 
@@ -121,6 +132,7 @@ Coefficient arithmetic is exact at any magnitude (§6): the int32 fast path prom
 | `96-big-coeff-reduces-to-one-suppressed` | `Times[10000000000, Rational[1, 10000000000], "x"]` | `"x"` | The coefficient `10¹⁰·1/10¹⁰ = 1` demotes to a canonical int32 `1` (`== OneComplex`), so the coefficient factor is suppressed and only the bare opaque `x` is emitted; a big-backed `1` would render as an explicit `1` factor |
 | `97-neg-min-int32-promotes` | `Times[-1, -2147483648]` | `2147483648` | Promotion boundary: negating `MinInt32` (`−(−2147483648) = 2147483648`) crosses int32 and promotes to a big integer |
 | `98-big-intermediate-demotes-to-small-int` | `Times[30000000000, Rational[1, 6000000000]]` | `5` | Both operands are big; the product `3·10¹⁰ / 6·10⁹ = 5` lands back in int32 range and renders as `5` (value check) |
+| `114-power-int32-boundary` | `Power[-2, 31]·a + Power[2, 31]·b` | `["Plus", ["Times", -2147483648, "a"], ["Times", 2147483648, "b"]]` | Repeated multiplication reaching the int32 boundary: `(−2)³¹` is exactly `MinInt32` and stays small, `2³¹` crosses and promotes |
 | `100-big-coeff-one-suppressed-on-pair` | `Times[10000000000, Rational[1, 10000000000], Pair[a, b]]` | `["Pair", ["LorentzIndex", "a"], ["LorentzIndex", "b"]]` | Demotion on the tensor path: the coefficient demotes to `1` while the Walker folds the term and stays the canonical `1` through the contractor and merger, so `WriteTerm` emits the bare Pair rather than `Times[1, Pair]` |
 | `101-big-literal-in-opaque` | `Times[f[10000000000], Power[x, 10000000000]]` | `["Times", ["Power", "x", 10000000000], ["f", 10000000000]]` | Oversized literals in opaque positions (unknown head, non-int32 exponent) never fold and render as full-precision JSON numbers; opaques sort by JSON signature (`["P…` before `["f…`) |
 
@@ -148,6 +160,7 @@ Larger inputs that combine multiple mechanisms (Power expansion, distribution, c
 | `38-power-of-d-sum-cubed` | `Power[Plus[1, D], 3]` | `Plus[1, 3·"D", 3·"D"·"D", "D"·"D"·"D"]` | Cartesian explosion of size 8 groups into 4 monomials with multiplicities `{1, 3, 3, 1}`; extends sample 12 to n=3 |
 | `39-power-times-contraction` | `Power[Plus[1, D], 2] * Pair[mu,mu,D]` | `Plus["D", 2·"D"·"D", "D"·"D"·"D"]` | Combines scalar `Power` expansion (sample 12) with Lorentz contraction; `(1+D)²·D = D + 2D² + D³` |
 | `66-distribute-binomial-pair-contracted` | `Times[Plus[a, b], Plus[c, d], Pair[mu, mu, D]]` | `Plus[D·a·c, D·a·d, D·b·c, D·b·d]` | Distribution of two binomials produces 4 monomials; the contracted Pair multiplies each by `D`; verifies sort-by-joint-signature within a single-pair-key Scalar |
+| `109-square-of-tensor-sum` | `Power[Pair[a,b,D] + x·Pair[a,p,D]·Pair[b,q,D], 2]` | `Plus["D", 2·x·SPD[p,q], x·x·SPD[p,p]·SPD[q,q]]` | Squaring a tensor sum: the two cross terms contract in opposite orders to the same `p·q` pair-key and merge into the coefficient `2x` |
 
 ---
 
@@ -168,6 +181,7 @@ These samples document behaviours where the contractor's actual output diverges 
 | `41-atomized-rational-numer-folds` | `Rational[Plus[2, 3], "x"]·κ + Rational[5, "x"]·κ` | `Plus[Times["κ", Rational[5, "x"]], Times["κ", Rational[Plus[2, 3], "x"]]]` | `Times[2, "κ", Rational[5, "x"]]` | §5 Decision C1: opaque-atom signature must use *normalised* sub-trees, so `Plus[2, 3]` should fold to `5` before signing. Currently the literal tree is signed and the two atoms have distinct signatures, preventing merge. The same root cause applies to other atomized positions (Rational denominator, Complex real/imag, Power exponent) — fixing it here fixes the family. |
 | `43-complex-polynomial-imag` | `Complex[0, Plus["x", 1]]` | `["Complex", 0, ["Plus", "x", 1]]` | `Plus[Complex[0, 1], Times[Complex[0, 1], "x"]]` | §4.5 polynomial-imaginary branch unimplemented: when `Im` is a multi-monomial polynomial, the spec requires expanding to `A + i·T = i·(x + 1) = i + i·x`. Currently the `Plus` is left intact inside the `Complex`, so the Complex is not folded into a normal-form sum. Same root cause covers Complex with symbolic real (`Complex["x", 1]`). |
 | `44-power-times-permuted` | `Power[Times["a","b"], -1]·κ + Power[Times["b","a"], -1]·κ` | `Plus[Times["κ", Power[Times["a","b"], -1]], Times["κ", Power[Times["b","a"], -1]]]` | `Times[2, "κ", Power[Times["a", "b"], -1]]` | §5 Decision C1 for `Times` inside an atomized `Power` child. Spec: the inner `Times` factors should be canonicalised (sorted) before signing, so the two atoms have the same signature and merge. Currently the input order is preserved (analogous case applies to `Plus`-inside-`Power`). |
+| `106-nested-plus-mixed-keys` | `x + y + z·Pair[a,b,D]` | `Plus[Plus["x", "y"], Times["z", Pair[a,b,D]]]` | `Plus["x", "y", Times["z", Pair[a,b,D]]]` | When the output has both a pair-free group with two or more monomials and a tensor term, the merger writes the pair-free group as its own `Plus` inside the outer one. Mathematica flattens this on import, so the value is right, but the form is not canonical. |
 
 ---
 
