@@ -29,6 +29,20 @@ What's recognised as a structured head: `Plus`, `Times`, `Power`, `Pair`, `Ratio
 
 A `LorentzIndex` or `Momentum` dimension argument must be either absent (`HasD=false`, the 4-dimensional case) or the bare string `"D"` (`HasD=true`). FeynCalc's *evanescent* objects `MTE` / `FVE` carry the dimension `D − 4`, which `FeynCalcInternal` serialises as the compound `["Plus", -4, "D"]` rather than a bare string. `parseLorentzIndex` / `parseMomentum` (`pkg/pipeline/codec/parser.go`) hard-require the string `"D"` and `panicf` on anything else, so the contractor *rejects* such input (clean non-zero exit, empty stdout) — it does not produce a wrong answer. Inputs carrying `["Plus", -4, "D"]` dimension labels cannot currently be contracted.
 
+### Pairs that mix dimensions are rejected
+
+A `Pair` whose arguments carry different dimension labels, such as `Pair[LorentzIndex[a], LorentzIndex[b, D]]`, is rejected (non-zero exit, empty stdout). Contracting it would depend on argument order, and such input indicates an error in the source expression. Indices with the same name but different dimensions in different `Pair`s are unrelated and never contract.
+
+### Only the first JSON value is read
+
+The contractor reads one expression from stdin; anything after the first complete JSON value is ignored without an error.
+
+---
+
+## Large exponents expand literally
+
+`Power[x, n]` with a positive int32 `n` is expanded into `n` factors, so time and memory grow with `n`; exponents near the int32 limit exhaust memory.
+
 ---
 
 ## Non-deterministic output ordering
@@ -57,8 +71,6 @@ Practical consequences:
 - Two `Momentum` values with structurally different but algebraically equivalent Sources (e.g. `Momentum[Plus[p, q]]` and `Momentum[Plus[q, p]]`) **do not merge** — distinct signatures.
 - No relation like `Pair[Momentum[a + b], k] = Pair[Momentum[a], k] + Pair[Momentum[b], k]` is applied. If the caller wants such expansions, they have to perform them in Mathematica before serialising.
 
-Real-world inputs do contain composite Momentum sources (e.g. propagator momenta inside `FeynAmpDenominator` / `PropagatorDenominator`); the contractor carries them through opaquely. A caller wanting distribution through such sources must perform it in Mathematica before serialising.
-
 ---
 
 ## Opaque normalisation gap
@@ -86,8 +98,6 @@ Closely related, distinct fix site: a parsed `Times[1, x]` embedded in an opaque
 
 ## Non-integer literals
 
-Coefficient arithmetic is exact at any magnitude. The Gaussian-rational ring uses an int32 fast path and transparently promotes to `math/big` (`big.Rat`) when a result exceeds int32, demoting back when a later result fits again. Integer and exact-rational inputs of any size therefore fold and round-trip losslessly — `Times[100000, 100000]` → `10000000000`, `Plus[2147483647, 1]` → `2147483648`, `Complex[100000, 1]·Complex[100000, 1]` → `Complex[9999999999, 200000]`.
-
-What does **not** fold is a *non-integer* numeric literal — a decimal or scientific-notation number such as `1.5` or `1e20`. There is no float coefficient ring; the parser keeps these as opaque `jsontext.Value` atoms, so they carry through verbatim and participate only in byte-identical merging, never in arithmetic. A `Rational` / `Complex` with a non-integer argument therefore atomizes the whole node (see [Opaque normalisation gap](#opaque-normalisation-gap)).
+Integer and exact-rational coefficients fold exactly at any magnitude. What does **not** fold is a *non-integer* numeric literal — a decimal or scientific-notation number such as `1.5` or `1e20`. There is no float coefficient ring; the parser keeps these as opaque `jsontext.Value` atoms, so they carry through verbatim and participate only in byte-identical merging, never in arithmetic. A `Rational` / `Complex` with a non-integer argument therefore atomizes the whole node (see [Opaque normalisation gap](#opaque-normalisation-gap)).
 
 → Technical detail: [scalar-normal-form.md](scalar-normal-form.md) §6 (exact arithmetic); [architecture.md](architecture.md) §Component Invariants > Parser.

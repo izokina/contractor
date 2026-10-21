@@ -1,9 +1,8 @@
 # Scalar Normal Form
 
 Mathematical model for the scalar coefficients (`Term.Coeff`) and the explicit
-trade-off decisions that bound the model. This document is descriptive only —
-it specifies *what* a normalised scalar is and *what equalities* must (and must
-not) be detected. No file references, no implementation steps.
+trade-off decisions that bound the model. It specifies *what* a normalised
+scalar is and *what equalities* must (and must not) be detected.
 
 ---
 
@@ -101,9 +100,8 @@ whose coefficient becomes the integer `0`. Re-sort by monomial signature.
 
 Distribute: for every pair `(c_k M_k, d_l N_l)` produce
 `(c_k · d_l) · (M_k · N_l)`. The product of monomials merges atom-power
-maps by **adding exponents**; entries whose exponent becomes zero are
-dropped (this gives `Power[a, 0] = 1` for free). The product of
-coefficients is computed in the coefficient ring (§6).
+maps by **adding exponents**. The product of coefficients is computed in
+the coefficient ring (§6).
 
 After distribution, collect like monomials by signature, summing
 coefficients (§4.1 rules apply). Any monomial with coefficient `0` is
@@ -158,7 +156,7 @@ The atomization rule:
 
 - **Decision B1 — what gets atomized.** The following are atomized:
   - `Rational[A, B]` whenever it is not a reduced integer-pair coefficient;
-  - `Power[S, e]` whenever `e` is not a positive int32 (including negative integers, since `1/(x+y)` is not a Laurent polynomial);
+  - `Power[S, e]` whenever `e` is not a positive int32 (including negative integers: the model has no negative exponents);
   - `Complex[A, B]` whose normal form is not expressible per §4.5.
 
 - **Decision C1 — how the atom's signature is built.** The opaque atom's
@@ -200,23 +198,15 @@ Coefficient arithmetic is **exact at any magnitude**. The representation has
 two tiers, and a value's tier is purely a storage detail, never a semantic
 bound.
 
-**Policy.** Each `Rational` carries an int32 numerator/denominator pair *and*
-an optional `*big.Rat`. Operations run on the int32 fast path (with `int64`
-used for safe intermediate computation); when a reduced result does not fit
-int32, it **promotes** to `big.Rat`. When a later result fits int32 again, it
-**demotes** back. `Complex` is a pair of such `Rational`s, so it promotes
-component-wise.
+**Policy.** Each `Rational` carries an int32 numerator/denominator pair and an
+optional `*big.Rat`. A reduced result that does not fit int32 **promotes** to
+`big.Rat`; a later result that fits again **demotes** back. `Complex` is a pair
+of such `Rational`s.
 
 **Canonical invariant.** A `Rational` uses its big field **iff** its value does
-not fit int32. This gives every value a single representation regardless of the
-arithmetic path that produced it, so:
-
-- `Add`, `Sub`, `Mul`, and `Neg` never fail — there is no overflow signal. Only
-  division carries an `ok` flag, and solely for division by zero.
-- The representation is canonical at *all* coefficient magnitudes: a value
-  computed two different ways (one staying in int32, one passing through big
-  and demoting) lands in the same representation, so it serialises identically
-  and a coefficient of exactly `1` is recognised as the identity and suppressed.
+not fit int32, so every value has a single representation regardless of the
+arithmetic path that produced it: it serialises identically, and a coefficient
+of exactly `1` is recognised as the identity and suppressed.
 
 **Serialisation.** A big integer is emitted as a bare JSON integer of full
 precision; a big `Rational` as `["Rational", num, den]` with full-precision
@@ -235,8 +225,7 @@ and never participates in arithmetic (§7).
 What this model **does** give you:
 
 - A unique canonical form for every scalar within the coefficient ring
-  (exact at any magnitude) and the Laurent-polynomial-with-opaque-atoms
-  structure.
+  (exact at any magnitude) and the polynomial-with-opaque-atoms structure.
 - Exact integer and Gaussian-rational arithmetic of unbounded magnitude:
   the int32 fast path promotes to `math/big` and demotes back transparently
   (§6), so no result is ever lost to overflow.
@@ -269,6 +258,6 @@ What this model **does not** give you, and why each loss is acceptable:
   model keeps `Power[S, 0]` opaque rather than risk changing semantics
   on the `S = 0` path. See §4.3.
 
-These losses are the price of the Laurent-polynomial-with-atoms
+These losses are the price of the polynomial-with-atoms
 design. They are bounded, predictable, and orthogonal to the kinds of
 simplification the contractor's input language was designed to express.

@@ -10,7 +10,7 @@ In conventional tensor notation, contraction corresponds to summing over a repea
 
 For example, `g^{μν} g_{μν}` in 4D spacetime contracts to the scalar value 4.
 
-In FeynGrav calculations, indices represent:
+The input carries two kinds of labels:
 - **Lorentz indices** (`mu`, `nu`, `rho`, ...): indices labelling components of Lorentz tensors and vectors
 - **Momentum labels** (`p`, `q`, `k`, ...): labels for momentum objects, optionally carrying a dimension label
 
@@ -25,98 +25,32 @@ Contraction rules:
 
 ## Dimension-Aware Lorentz Contractions
 
-This project is designed to process expressions that follow the internal tensor representation used by FeynCalc. FeynCalc is a Wolfram Mathematica package for symbolic evaluation of Feynman diagrams and algebraic calculations in quantum field theory and elementary particle physics. Its source code is available in the FeynCalc GitHub repository, and its online reference guide gives the authoritative definitions of the objects discussed below:
+The input follows the internal tensor representation of [FeynCalc](https://github.com/FeynCalc/feyncalc), a Mathematica package for symbolic Feynman-diagram calculations. This section summarises only what the contractor needs; FeynCalc's [reference guide](https://feyncalc.github.io/reference) is authoritative.
 
-* FeynCalc GitHub repository: `https://github.com/FeynCalc/feyncalc`
-* FeynCalc online reference guide: `https://feyncalc.github.io/reference`
+FeynCalc distinguishes Lorentz objects living in four dimensions from those living in a symbolic number of dimensions `D`. This matters in dimensional regularization, where loop integrals and tensor expressions are evaluated in $D = 4 - 2 \, \epsilon$. The second argument of `LorentzIndex` or `Momentum` is this dimension label; it is not a marker for derivative indices.
 
-The discussion below only summarizes the parts of FeynCalc that are relevant for the contractor. For a complete description of FeynCalc syntax, internal representations, and available algebraic operations, the user should consult the official reference guide.
+`Pair` represents a metric tensor, a Lorentz vector, or a scalar product, depending on its arguments:
 
-FeynCalc distinguishes Lorentz objects living in four dimensions from Lorentz objects living in an arbitrary symbolic number of dimensions. The arbitrary dimension is usually denoted by `D`. This distinction is essential in calculations that use dimensional regularization, where loop integrals and tensor expressions are often evaluated in $D = 4 - 2 \, \epsilon$ rather than strictly in four dimensions.
+| Object | 4 dimensions | `D` dimensions |
+|---|---|---|
+| Lorentz index $\mu$ | `LorentzIndex[mu]` | `LorentzIndex[mu, D]` |
+| Momentum $p$ | `Momentum[p]` | `Momentum[p, D]` |
+| Metric tensor $g^{\mu\nu}$ | `Pair[LorentzIndex[mu], LorentzIndex[nu]]` | `Pair[LorentzIndex[mu, D], LorentzIndex[nu, D]]` |
+| Lorentz vector $p^\mu$ | `Pair[LorentzIndex[mu], Momentum[p]]` | `Pair[LorentzIndex[mu, D], Momentum[p, D]]` |
+| Scalar product $p \cdot q$ | `Pair[Momentum[p], Momentum[q]]` | `Pair[Momentum[p, D], Momentum[q, D]]` |
 
-In FeynCalc, the second argument of `LorentzIndex` or `Momentum` is a dimension label. It is not a marker for derivative indices.
+Contraction preserves the dimension labels:
 
-For example,
-```mathematica
-LorentzIndex[mu]
-```
-denotes a four-dimensional Lorentz index, while
-```mathematica
-LorentzIndex[mu, D]
-```
-denotes a Lorentz index in `D` dimensions.
+| Input | Result |
+|---|---|
+| `Pair[LorentzIndex[mu], LorentzIndex[mu]]` | `4` |
+| `Pair[LorentzIndex[mu, D], LorentzIndex[mu, D]]` | `D` |
+| `Pair[LorentzIndex[mu], Momentum[p]] Pair[LorentzIndex[mu], Momentum[q]]` | `Pair[Momentum[p], Momentum[q]]` |
+| `Pair[LorentzIndex[mu, D], Momentum[p, D]] Pair[LorentzIndex[mu, D], Momentum[q, D]]` | `Pair[Momentum[p, D], Momentum[q, D]]` |
 
-Similarly,
-```mathematica
-Momentum[p]
-```
-denotes a four-dimensional momentum, while
-```mathematica
-Momentum[p, D]
-```
-denotes a momentum in `D` dimensions.
+A free index is not contracted: `Pair[LorentzIndex[mu], LorentzIndex[nu]]` stays a metric tensor unless one of its indices is repeated elsewhere in the term.
 
-FeynCalc represents metric tensors, Lorentz vectors, and scalar products internally using `Pair`. The meaning of `Pair[x, y]` depends on whether its arguments are Lorentz indices or momenta.
-
-A four-dimensional metric tensor is represented as
-```mathematica
-Pair[LorentzIndex[mu], LorentzIndex[nu]]
-```
-whereas a `D`-dimensional metric tensor is represented as
-```mathematica
-Pair[LorentzIndex[mu, D], LorentzIndex[nu, D]]
-```
-A four-dimensional Lorentz vector $p^\mu$ is represented as
-```mathematica
-Pair[LorentzIndex[mu], Momentum[p]]
-```
-whereas a `D`-dimensional Lorentz vector $p^\mu$ is represented as
-```mathematica
-Pair[LorentzIndex[mu, D], Momentum[p, D]]
-```
-
-Scalar products are represented by pairing two momenta. For example,
-```mathematica
-Pair[Momentum[p], Momentum[q]]
-```
-represents the four-dimensional scalar product of `p` and `q`, while
-```mathematica
-Pair[Momentum[p, D], Momentum[q, D]]
-```
-represents the corresponding `D`-dimensional scalar product.
-
-The contractor must therefore preserve the dimension labels attached to Lorentz indices and momenta. In particular,
-```mathematica
-Pair[LorentzIndex[mu], LorentzIndex[mu]]
-```
-contracts to `4` while
-```mathematica
-Pair[LorentzIndex[mu, D], LorentzIndex[mu, D]]
-```
-contracts to `D`.
-
-Likewise, repeated Lorentz indices in vector expressions are contracted according to their dimension. For example,
-```mathematica
-Pair[LorentzIndex[mu], Momentum[p]] Pair[LorentzIndex[mu], Momentum[q]]
-```
-contracts to the four-dimensional scalar product
-```mathematica
-Pair[Momentum[p], Momentum[q]]
-```
-whereas
-```mathematica
-Pair[LorentzIndex[mu, D], Momentum[p, D]] Pair[LorentzIndex[mu, D], Momentum[q, D]]
-```
-contracts to the `D`-dimensional scalar product
-```mathematica
-Pair[Momentum[p, D], Momentum[q, D]]
-```
-
-A free Lorentz index should not be contracted. For instance,
-```mathematica
-Pair[LorentzIndex[mu], LorentzIndex[nu]]
-```
-represents a metric tensor with two free Lorentz indices. It does not contract to `4` unless the two indices are identified, or unless it is multiplied by another tensor expression that supplies the corresponding repeated indices.
+Both arguments of a `Pair` must carry the same dimension label; a `Pair` that mixes them indicates an error in the source expression and is rejected. Across `Pair`s, an index is identified by its name and dimension together, so `LorentzIndex[mu]` and `LorentzIndex[mu, D]` are unrelated and never contract with each other.
 
 This should not be interpreted as a full implementation of dimensional regularization. The contractor does not evaluate loop integrals, expand expressions around $D = 4 - 2 \, \epsilon$, or manipulate ultraviolet or infrared poles. Its role is narrower: it performs dimension-aware Lorentz contractions in a way compatible with FeynCalc's internal representation.
 
@@ -126,44 +60,20 @@ Implementation details — the streaming pipeline, the per-worker contractor, th
 
 ## Input/Output Format
 
-The system uses Mathematica's `ExpressionJSON` format to exchange expressions with external programs. In this format, a Mathematica expression is represented as a JSON array whose first element is the head of the expression and whose remaining elements are its arguments.
-
-For example, the FeynCalc expression
-```mathematica
-Pair[LorentzIndex[mu], LorentzIndex[mu]]
-```
-is represented schematically as
-```json
-["Pair", ["LorentzIndex", "mu"], ["LorentzIndex", "mu"]]
-```
-This expression is a four-dimensional metric trace and therefore contracts to `4`.
-
-A vector-vector contraction provides a less trivial example. The expression
+Expressions are exchanged in Mathematica's `ExpressionJSON` format: an expression is a JSON array whose first element is its head and whose remaining elements are its arguments. For example, the vector-vector contraction above,
 ```mathematica
 Pair[LorentzIndex[mu], Momentum[p]] Pair[LorentzIndex[mu], Momentum[q]]
 ```
-is represented schematically as
+is sent as
 ```json
-[
-  "Times",
+["Times",
   ["Pair", ["LorentzIndex", "mu"], ["Momentum", "p"]],
-  ["Pair", ["LorentzIndex", "mu"], ["Momentum", "q"]]
-]
+  ["Pair", ["LorentzIndex", "mu"], ["Momentum", "q"]]]
 ```
-After contraction, the repeated Lorentz index is removed and the result is the scalar product
+and comes back as
 ```json
 ["Pair", ["Momentum", "p"], ["Momentum", "q"]]
 ```
-
-By contrast, the expression
-```mathematica
-Pair[LorentzIndex[mu], LorentzIndex[nu]]
-```
-is represented as
-```json
-["Pair", ["LorentzIndex", "mu"], ["LorentzIndex", "nu"]]
-```
-and should not contract to `4`, because it is a metric tensor with two free Lorentz indices.
 
 Structure:
 
@@ -173,16 +83,13 @@ Structure:
 - Lorentz index: `["LorentzIndex", "mu"]` for a four-dimensional index, or `["LorentzIndex", "mu", "D"]` for a `D`-dimensional index.
 - Momentum: `["Momentum", "p"]` for a four-dimensional momentum, or `["Momentum", "p", "D"]` for a `D`-dimensional momentum.
 
-
 ---
 
 ## Integration with Mathematica
 
-The contractor is intended to be called from Mathematica by sending a FeynCalc expression to the external executable in Mathematica's `ExpressionJSON` format and then importing the returned JSON expression back into Mathematica.
+The contractor is called from Mathematica by exporting a FeynCalc expression to `ExpressionJSON`, piping it to the executable, and importing the reply. The recommended integration uses `StartProcess` with explicit standard streams rather than a shell pipe: this avoids shell-dependent behaviour and gives access to `stderr` and the exit code, which are essential for diagnosing malformed input or contractor-side errors.
 
-The recommended integration uses `StartProcess`, explicit standard streams, and `ExpressionJSON`. This avoids shell-dependent behavior and gives access to `stderr` and the process exit code, which is essential for diagnosing malformed input or contractor-side errors.
-
-The following helper drives the contractor from Mathematica. It can also be used as a standalone Mathematica wrapper, because it does not rely on any special FeynGrav functionality apart from the path variable `packageDirectory` and the availability of FeynCalc's `FeynCalcInternal` conversion.
+The following helper, used by FeynGrav, drives the contractor:
 
 ```mathematica
 FeynGravContractor[theInput_] := Module[
@@ -296,25 +203,6 @@ FeynGravContractor[theInput_] := Module[
 ];
 ```
 
-The wrapper performs the following steps:
+Outside FeynGrav, set `contractorPath` to the absolute path of the compiled executable (e.g. `contractorPath = "/absolute/path/to/contractor";`); the rest works unchanged as long as FeynCalc is loaded.
 
-1. Converts the input expression to FeynCalc's internal representation with `FeynCalcInternal`.
-2. Exports the internal expression to compact `ExpressionJSON`.
-3. Checks that Mathematica can import the generated JSON before sending it to the contractor.
-4. Starts the contractor executable using `StartProcess` without invoking a shell.
-5. Writes the JSON request to the contractor's standard input using UTF-8 encoding.
-6. Closes standard input so that the contractor receives EOF and starts processing the complete request.
-7. Reads the complete standard output and standard error streams.
-8. Checks the process exit code and prints diagnostics if the contractor fails.
-9. Imports the contractor output back from `ExpressionJSON` into a Wolfram expression.
-
-To use this wrapper outside FeynGrav, replace the definition of `contractorPath` with the absolute path to the compiled contractor executable. For example:
-
-```mathematica
-contractorPath = "/absolute/path/to/contractor";
-```
-
-The rest of the function can be used unchanged, provided that FeynCalc is loaded and the contractor executable accepts and returns expressions in the expected `ExpressionJSON` format.
-
----
-Worked benchmark examples (which exercise the wrapper against well-known FeynGrav results and demonstrate the speedup) are bundled in [Examples/contractor_benchmark_examples.nb](../Examples/contractor_benchmark_examples.nb).
+Worked benchmark examples, which exercise the wrapper against well-known FeynGrav results and demonstrate the speedup, are bundled in [Examples/contractor_benchmark_examples.nb](../Examples/contractor_benchmark_examples.nb).

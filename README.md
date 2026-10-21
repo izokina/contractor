@@ -37,8 +37,10 @@ ExpressionJSON (Mathematica's JSON serialization). One expression in, one out.
 ```
 Expr:   ["Plus",  expr, ...]       -- sum; can appear anywhere, not only at root
         ["Times", expr, ...]       -- product; args are themselves full Exprs
-        ["Power", expr, n]         -- integer n ≥ 1 expanded; n ≤ 0 or symbolic → opaque
+        ["Power", expr, n]         -- int32 n ≥ 1 expanded; any other n → opaque
         ["Pair",  arg, arg]        -- tensor pair with exactly 2 index/momentum args
+        ["Rational", p, q]         -- folded into the coefficient when p, q are integers
+        ["Complex", re, im]        -- likewise, for integer or Rational parts
         scalar                     -- string symbol, number, or opaque object (passthrough)
 Arg:    ["LorentzIndex", "name"]
         ["LorentzIndex", "name", "D"]
@@ -82,7 +84,7 @@ Build requires `GOEXPERIMENT=jsonv2` (handled by the Makefile).
 | Package | Purpose |
 |---------|---------|
 | `cmd/contractor` | Entry point, thread pool, flags |
-| `pkg/pipeline/expr` | Value types: `Expr` interface and concrete Expr types (Atom, Pair, LorentzIndex, Momentum, PlusExpr, TimesExpr, PowerExpr, RationalExpr, ComplexExpr) with their `New*` constructors; `Term`; the exact arithmetic ring (`Rational`, `Complex`, `OneComplex`; int32 fast path + `math/big` fallback); the sum-of-monomials normal form (`Scalar`, `Monomial`, `Opaque`, `OneScalar`); converters between Expr trees and arithmetic — see `docs/scalar-normal-form.md` |
+| `pkg/pipeline/expr` | Value types: the `Expr` tree, `Term` and the index types; the exact `Rational`/`Complex` arithmetic; the sum-of-monomials `Scalar` normal form (see `docs/scalar-normal-form.md`) |
 | `pkg/pipeline/walk` | Generic `Walker[Coeff, Leaf]` + `Folder[Coeff, Leaf]` cyclic-pull-generator traversal driver |
 | `pkg/pipeline/codec` | JSON I/O: synchronous `Parser` (`ParseJson(decoder, emit)`), `Writer` (encoder + reusable big-int scratch, single-goroutine; `WriteExpr` for any Expr, `WriteTerm` for the Term cascade streamed direct from `expr.Term`), `Signer`; shared panic-based control flow in `errors.go` |
 | `pkg/pipeline/eval` | `Calculator` (`Add`/`Mul` on `Scalar`; group/fold); unexported `scalarFolder` driving the inner Expr→Scalar Walker held by `TermFolder` (parser-side outer Walker stage that emits `expr.Term`) |

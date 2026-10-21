@@ -108,9 +108,9 @@ type PowerExpr struct {
 func (p *PowerExpr) Len() int       { return p.len }
 func (p *PowerExpr) IsScalar() bool { return p.ExpInt <= 0 || p.Child.IsScalar() }
 
-// NewPowerExprInt builds a PowerExpr whose exponent is a cached positive
-// int32. The Walker will expand it as the Cartesian product of n copies of
-// child; the precomputed len reflects that expansion (or 1 when n <= 0).
+// NewPowerExprInt builds a PowerExpr whose exponent is a cached int32. For
+// n > 0 the Walker expands it as the Cartesian product of n copies of child;
+// the precomputed len reflects that expansion (or 1 when n <= 0).
 func NewPowerExprInt(child Expr, expInt int32) *PowerExpr {
 	totalLen := 1
 	if expInt > 0 {
@@ -121,8 +121,8 @@ func NewPowerExprInt(child Expr, expInt int32) *PowerExpr {
 	return &PowerExpr{Child: child, ExpInt: expInt, len: totalLen}
 }
 
-// NewPowerExpr builds a PowerExpr whose exponent is a non-int32 Expr (zero,
-// negative, symbolic, or any non-int32 atom). The Walker treats it as
+// NewPowerExpr builds a PowerExpr whose exponent is not an int32 atom
+// (symbolic, compound, or a non-int32 literal). The Walker treats it as
 // opaque, so len is 1.
 func NewPowerExpr(child Expr, exp Expr) *PowerExpr {
 	return &PowerExpr{Child: child, Exp: exp, len: 1}
