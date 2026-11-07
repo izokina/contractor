@@ -58,6 +58,23 @@ See [docs/samples.md](docs/samples.md) for the worked examples and *Known implem
 
 ---
 
+## Install
+
+Each [release](https://github.com/izokina/contractor/releases) carries binaries for Linux, macOS and Windows, on amd64 and arm64, named `contractor-<os>-<arch>` (`.exe` on Windows). They are built without cgo, so they need nothing else installed.
+
+From the source, with Go 1.27 or later:
+
+```bash
+make install                      # the binary to /usr/local/bin, the man page to /usr/local/share/man/man1
+make install PREFIX="$HOME/.local"
+make install DESTDIR=/tmp/stage   # stage the files for a package
+make uninstall                    # takes the same PREFIX and DESTDIR
+```
+
+`go install github.com/izokina/contractor/cmd/contractor@latest` installs the binary alone. The man page, [docs/contractor.1](docs/contractor.1), describes the flags, the input and output, and the exit status.
+
+---
+
 ## Usage
 
 ```bash
@@ -88,8 +105,6 @@ result = ImportString[ReadString[ProcessConnection[proc, "StandardOutput"]], "Ex
 ```
 
 The full `FeynGravContractor[]` wrapper — with FeynCalcInternal conversion, UTF-8 stdin, exit-code checks, and stderr offset diagnostics — is documented in [docs/feyncalc-notation.md](docs/feyncalc-notation.md) §Integration with Mathematica and exercised by the bundled benchmark notebook [Examples/contractor_benchmark_examples.nb](Examples/contractor_benchmark_examples.nb).
-
-Building requires Go 1.27 or later.
 
 ---
 
