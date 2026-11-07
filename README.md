@@ -75,7 +75,7 @@ result = ImportString[ReadString[ProcessConnection[proc, "StandardOutput"]], "Ex
 
 The full `FeynGravContractor[]` wrapper — with FeynCalcInternal conversion, UTF-8 stdin, exit-code checks, and stderr offset diagnostics — is documented in [docs/feyncalc-notation.md](docs/feyncalc-notation.md) §Integration with Mathematica and exercised by the bundled benchmark notebook [Examples/contractor_benchmark_examples.nb](Examples/contractor_benchmark_examples.nb).
 
-Build requires `GOEXPERIMENT=jsonv2` (handled by the Makefile).
+Building requires Go 1.27 or later.
 
 ---
 

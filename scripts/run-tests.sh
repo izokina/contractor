@@ -4,7 +4,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 echo "BUILD_STATUS: RUNNING"
-if ! GOEXPERIMENT=jsonv2 go build -o bin/ ./cmd/contractor 2>&1; then
+if ! go build -o bin/ ./cmd/contractor 2>&1; then
   echo "BUILD_STATUS: FAILED"
   exit 1
 fi
