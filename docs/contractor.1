@@ -1,0 +1,150 @@
+.TH CONTRACTOR 1 2026-11-06 "contractor 0.3.0" "User Commands"
+.SH NAME
+contractor \- contract repeated Lorentz indices in Mathematica ExpressionJSON
+.SH SYNOPSIS
+.B contractor
+.RB [ \-threads
+.IR n ]
+.RB [ \-merge\-memory
+.IR bytes ]
+.RB [ \-cpuprofile
+.IR file ]
+.RB [ \-memprofile
+.IR file ]
+.RB [ \-blockprofile
+.IR file ]
+.RB [ \-mutexprofile
+.IR file ]
+.RI < input
+.RI > output
+.br
+.B contractor \-version
+.SH DESCRIPTION
+.B contractor
+reads one expression in Mathematica's ExpressionJSON form from standard
+input, expands it, contracts every Lorentz index that occurs twice in a term,
+folds the exact numeric coefficients, merges like terms, and writes the
+result to standard output as one ExpressionJSON expression.
+Its input follows FeynCalc's internal representation.
+.PP
+.B Plus
+and
+.B Times
+are expanded, and so is
+.B Power
+with a positive integer exponent below 2^31; any other power is one opaque
+factor.
+.B Rational
+and
+.B Complex
+of integers fold into the coefficient; any other, unless it divides by 0 or
+holds a Pair, is read as the product or sum it stands for.
+.B Pair
+takes two arguments, each a
+.BI LorentzIndex[ name ]
+or a
+.BI Momentum[ source ] ,
+with an optional dimension label: none for 4 dimensions,
+.B \(dqD\(dq
+for
+.IR D ,
+or
+.B [\(dqPlus\(dq,\ \-4,\ \(dqD\(dq]
+for
+.IR D \-4.
+A momentum source that is a sum of labels with exact numeric coefficients is
+read as one Pair per label.
+Every other head is one opaque factor, written back as it came.
+.PP
+An index name that occurs twice in a term is contracted; a metric contracted
+with itself gives 4,
+.B \(dqD\(dq
+or
+.BR [\(dqPlus\(dq,\ \-4,\ \(dqD\(dq] .
+One name in two dimensions contracts in the dimension both share, and 4 with
+.IR D \-4
+gives 0.
+.PP
+The input must be exactly one expression: a second value after it, JSON
+objects,
+.BR true ,
+.BR false ,
+.BR null ,
+the empty array, nesting deeper than 9996 arrays, another dimension label and
+a Pair whose two arguments differ in dimension are rejected.
+.PP
+The output is indented with tabs: 0 for an empty result, a single term, or a
+.B Plus
+of terms.
+Its order comes from content alone, so it is the same bytes for any thread
+count and any order of the input's summands.
+It is written as it is encoded, so only exit status 0 means that standard
+output holds the complete result.
+.SH OPTIONS
+.TP
+.BI \-threads " n"
+Run
+.I n
+workers, at least 1; the default is the number of CPUs.
+The workers share every stage; parsing is done by one at a time.
+.TP
+.BI \-merge\-memory " bytes"
+Hold about
+.I bytes
+of merged terms in memory, and move the rest to a temporary file, from which
+they are merged again before the output is written.
+The output is the same.
+The default, 0, holds them all in memory.
+.TP
+.BI \-cpuprofile " file" "\fR, \fP\-memprofile " file "\fR, \fP\-blockprofile " file "\fR, \fP\-mutexprofile " file
+Write a profile for
+.BR "go tool pprof" .
+Each file is created before the input is read and written after the run,
+even when it fails.
+.TP
+.B \-version
+Print the version and exit.
+.TP
+.B \-h
+Print the usage on standard error and exit.
+.SH EXIT STATUS
+.TP
+.B 0
+Success: standard output holds the complete result.
+.TP
+.B 1
+The input was rejected, leaving standard output empty, or reading, writing
+or a temporary file failed.
+A failure while writing the output leaves the part already written, and its
+message begins
+.BR "output incomplete" .
+.TP
+.B 2
+A usage error: an unknown flag, a bad flag value, or an argument that is not
+a flag.
+.SH ENVIRONMENT
+.TP
+.B TMPDIR
+The directory of the temporary file of
+.BR \-merge\-memory ,
+named
+.BR contractor\-* .
+Where the system allows it, its name is removed as soon as it is made;
+elsewhere the file is removed before the contractor exits.
+.SH DIAGNOSTICS
+Messages go to standard error and are ASCII: a
+non-ASCII character quoted from the input is escaped, as in
+.BR \eu03ba .
+.SH EXAMPLES
+.nf
+$ echo \(aq["Pair", ["LorentzIndex", "mu", "D"], ["LorentzIndex", "mu", "D"]]\(aq | contractor
+"D"
+.fi
+.SH SEE ALSO
+The README and the
+.I docs
+directory of the source, at https://github.com/izokina/contractor:
+.I docs/known-limitations.md
+lists what input is rejected, and
+.I docs/feyncalc-notation.md
+reads the input in FeynCalc's notation.
