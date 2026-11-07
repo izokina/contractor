@@ -1,106 +1,136 @@
-// Package codec is the JSON I/O layer for the contractor pipeline:
-// streaming Expr parser, Writer, and the canonical-signature builder.
+// Package codec is the JSON I/O layer for the contractor pipeline: the
+// streaming Expr parser, which keys what it parses, and the Writer.
 package codec
 
 import (
-	"encoding/json"
 	"encoding/json/jsontext"
 	"math/big"
+	"slices"
 
-	"github.com/izokina/contractor/pkg/literal"
 	"github.com/izokina/contractor/pkg/pipeline/expr"
+	"github.com/izokina/contractor/pkg/pipeline/ident"
 )
 
-// Writer renders contractor values as Mathematica ExpressionJSON.
-// WriteExpr emits any Expr as a fixed-shape JSON value; WriteTerm renders
-// a Term's synthetic Times/Plus cascade with the flatten and
-// identity-collapse needed to produce canonical output.
+// Writer renders contractor values as Mathematica ExpressionJSON, with the
+// names and momentum sources that t holds.
 type Writer struct {
 	enc     *jsontext.Encoder
+	t       *ident.Table
 	scratch []byte // reused by writeBigInt; makes Writer single-goroutine
+
+	addends int
+	pairs   []expr.Pair
+	held    []expr.Monomial
+	open    bool
 }
 
-func NewWriter(enc *jsontext.Encoder) *Writer {
-	return &Writer{enc: enc}
+func NewWriter(enc *jsontext.Encoder, t *ident.Table) *Writer {
+	return &Writer{enc: enc, t: t}
 }
 
-// WriteExpr emits n as a self-contained JSON value with no flatten and no
-// identity collapse. Children recurse via writeExpr. Canonical Mathematica
-// never nests Times in Times or Plus in Plus, so straight emission is the
-// canonical form.
-func (w *Writer) WriteExpr(n expr.Expr) (err error) {
+// Add writes the monomial m of the term whose Pairs are pairs. The output is
+// a sum, 0 for no addends, the bare addend for one and Plus[addend...]
+// otherwise: each pair-free monomial is an addend, and so is each tensor
+// term, its monomials given one after another. The first addend is held
+// until a second one begins, and each later one until its second monomial,
+// so neither pairs nor m may change until Close.
+func (w *Writer) Add(pairs []expr.Pair, m expr.Monomial) (err error) {
 	defer recoverWrapped(&err)
-	w.writeExpr(n)
+
+	if w.addends == 0 || len(pairs) == 0 || !slices.Equal(pairs, w.pairs) {
+		if w.addends == 1 {
+			w.openArray(headPlus)
+		}
+		if w.addends > 0 {
+			w.endAddend()
+		}
+		w.addends++
+		w.pairs = pairs
+	}
+	if w.open {
+		w.writeMonomial(m)
+		return nil
+	}
+	if w.held = append(w.held, m); w.addends > 1 && len(w.held) == 2 {
+		w.openTimes()
+	}
 	return nil
 }
 
-// WriteTerm emits a Term as the cascade
-//
-//	Term = Times[Coeff_factors..., Pair...]
-//
-// Each level picks 0-identity / 1-bare / N-array from a count computed
-// up-front.
-func (w *Writer) WriteTerm(t expr.Term) (err error) {
+func (w *Writer) Close() (err error) {
 	defer recoverWrapped(&err)
 
-	if len(t.Coeff.Monomials) == 1 {
-		w.writeMonomial(t.Coeff.Monomials[0], t.Pairs...)
-		return nil
+	switch w.addends {
+	case 0:
+		w.writeToken(jsontext.Int(0))
+	case 1:
+		w.endAddend()
+	default:
+		w.endAddend()
+		w.writeToken(jsontext.EndArray)
 	}
-	if len(t.Pairs) == 0 {
-		w.writeScalar(t.Coeff)
-		return nil
-	}
+	return nil
+}
 
-	w.openArray(literal.Times)
-	w.writeScalar(t.Coeff)
-	for _, p := range t.Pairs {
-		w.writeExpr(p)
+func (w *Writer) openTimes() {
+	w.openArray(headTimes)
+	w.openArray(headPlus)
+	for _, m := range w.held {
+		w.writeMonomial(m)
+	}
+	clear(w.held)
+	w.held, w.open = w.held[:0], true
+}
+
+// endAddend writes the rest of the current addend: a single monomial with the
+// Pairs among its factors, or the end of Times[Plus[...], pair...].
+func (w *Writer) endAddend() {
+	if len(w.held) > 1 {
+		w.openTimes()
+	}
+	if !w.open {
+		w.writeMonomial(w.held[0], w.pairs...)
+		clear(w.held)
+		w.held = w.held[:0]
+		return
 	}
 	w.writeToken(jsontext.EndArray)
-	return nil
+	for _, p := range w.pairs {
+		w.writePair(p)
+	}
+	w.writeToken(jsontext.EndArray)
+	w.open = false
 }
 
+// writeExpr emits n as a fixed-shape JSON value, with no flatten and no
+// identity collapse. Canonical Mathematica never nests Times in Times or Plus
+// in Plus, so straight emission is the canonical form.
 func (w *Writer) writeExpr(n expr.Expr) {
 	switch v := n.(type) {
+	case *expr.Symbol:
+		w.writeToken(jsontext.String(w.t.Name(v.Key)))
 	case *expr.Atom:
 		w.writeAtom(v)
-	case expr.Pair:
-		w.writePair(v)
+	case *expr.HeadExpr:
+		w.writeHead(v)
 	case *expr.PowerExpr:
 		w.writePower(v)
 	case *expr.RationalExpr:
-		w.writeArray(literal.Rational, v.Num, v.Den)
+		w.writeArray(headRational, v.Num, v.Den)
 	case *expr.ComplexExpr:
-		w.writeArray(literal.Complex, v.Re, v.Im)
+		w.writeArray(headComplex, v.Re, v.Im)
 	case *expr.TimesExpr:
-		w.writeArray(literal.Times, v.Children...)
+		w.writeArray(headTimes, v.Children...)
 	case *expr.PlusExpr:
-		w.writeArray(literal.Plus, v.Children...)
+		w.writeArray(headPlus, v.Children...)
 	default:
-		panicf("writer: WriteExpr received unrecognized Expr %T", n)
+		panicf("writer: unrecognized Expr %T", n)
 	}
 }
 
-func (w *Writer) writeScalar(s expr.Scalar) {
-	if len(s.Monomials) == 0 {
-		w.writeToken(jsontext.Int(0))
-		return
-	}
-	if len(s.Monomials) == 1 {
-		w.writeMonomial(s.Monomials[0])
-		return
-	}
-
-	w.openArray(literal.Plus)
-	for _, m := range s.Monomials {
-		w.writeMonomial(m)
-	}
-	w.writeToken(jsontext.EndArray)
-}
-
-// extraPairs is supplied only when inlining a single-Monomial Coeff
-// alongside Pairs at the Term outer level.
+// writeMonomial writes Times[coefficient unless 1, factor..., extraPair...],
+// picking 1, the bare item or Times from their count. extraPairs are the
+// Pairs of an addend that is this one monomial.
 func (w *Writer) writeMonomial(m expr.Monomial, extraPairs ...expr.Pair) {
 	count := len(m.Opaques) + len(extraPairs)
 	if m.Coeff != expr.OneComplex {
@@ -117,23 +147,34 @@ func (w *Writer) writeMonomial(m expr.Monomial, extraPairs ...expr.Pair) {
 			return
 		}
 		if len(m.Opaques) == 1 {
-			w.writeExpr(m.Opaques[0].Val)
+			w.writeFactor(m.Opaques[0])
 			return
 		}
-		w.writeExpr(extraPairs[0])
+		w.writePair(extraPairs[0])
 		return
 	}
 
-	w.openArray(literal.Times)
+	w.openArray(headTimes)
 	if m.Coeff != expr.OneComplex {
 		w.writeComplex(m.Coeff)
 	}
 	for _, o := range m.Opaques {
-		w.writeExpr(o.Val)
+		w.writeFactor(o)
 	}
 	for _, p := range extraPairs {
-		w.writeExpr(p)
+		w.writePair(p)
 	}
+	w.writeToken(jsontext.EndArray)
+}
+
+func (w *Writer) writeFactor(f expr.Factor) {
+	if f.Exp == 1 {
+		w.writeExpr(f.Node)
+		return
+	}
+	w.openArray(headPower)
+	w.writeExpr(f.Node)
+	w.writeToken(jsontext.Int(int64(f.Exp)))
 	w.writeToken(jsontext.EndArray)
 }
 
@@ -143,30 +184,37 @@ func (w *Writer) openArray(name string) {
 }
 
 func (w *Writer) writeAtom(a *expr.Atom) {
-	switch v := a.Value.(type) {
-	case string:
-		w.writeToken(jsontext.String(v))
-	case int32:
-		w.writeToken(jsontext.Int(int64(v)))
-	case *big.Int:
-		w.writeBigInt(v)
-	case jsontext.Value:
-		w.writeValue(v)
+	switch {
+	case a.Big != nil:
+		w.writeBigInt(a.Big)
+	case a.Text != nil:
+		w.writeValue(a.Text)
 	default:
-		b, err := json.Marshal(v)
-		wrap(err)
-		w.writeValue(jsontext.Value(b))
+		w.writeToken(jsontext.Int(int64(a.Int)))
 	}
 }
 
+func (w *Writer) writeHead(h *expr.HeadExpr) {
+	w.writeToken(jsontext.BeginArray)
+	if h.Head != nil {
+		w.writeExpr(h.Head)
+	} else {
+		w.writeToken(jsontext.String(w.t.Name(h.Name)))
+	}
+	for _, a := range h.Args {
+		w.writeArg(a)
+	}
+	w.writeToken(jsontext.EndArray)
+}
+
 func (w *Writer) writePower(p *expr.PowerExpr) {
-	if p.Exp != nil {
-		w.writeArray(literal.Power, p.Child, p.Exp)
+	if p.Exp != (expr.Arg{}) {
+		w.writeArray(headPower, p.Child, p.Exp)
 		return
 	}
 
-	w.openArray(literal.Power)
-	w.writeExpr(p.Child)
+	w.openArray(headPower)
+	w.writeArg(p.Child)
 	w.writeToken(jsontext.Int(int64(p.ExpInt)))
 	w.writeToken(jsontext.EndArray)
 }
@@ -177,7 +225,7 @@ func (w *Writer) writeComplex(z expr.Complex) {
 		return
 	}
 
-	w.openArray(literal.Complex)
+	w.openArray(headComplex)
 	w.writeRational(z.Re)
 	w.writeRational(z.Im)
 	w.writeToken(jsontext.EndArray)
@@ -189,7 +237,7 @@ func (w *Writer) writeRational(r expr.Rational) {
 			w.writeBigInt(q.Num())
 			return
 		}
-		w.openArray(literal.Rational)
+		w.openArray(headRational)
 		w.writeBigInt(q.Num())
 		w.writeBigInt(q.Denom())
 		w.writeToken(jsontext.EndArray)
@@ -201,7 +249,7 @@ func (w *Writer) writeRational(r expr.Rational) {
 		return
 	}
 
-	w.openArray(literal.Rational)
+	w.openArray(headRational)
 	w.writeToken(jsontext.Int(int64(r.Num())))
 	w.writeToken(jsontext.Int(int64(r.Den())))
 	w.writeToken(jsontext.EndArray)
@@ -213,40 +261,47 @@ func (w *Writer) writeBigInt(x *big.Int) {
 }
 
 func (w *Writer) writePair(p expr.Pair) {
-	w.openArray(literal.Pair)
-	for _, l := range p.Lorentz {
-		w.writeLorentzIndex(l)
-	}
-	for _, m := range p.Momentum {
-		w.writeMomentum(m)
-	}
-	w.writeToken(jsontext.EndArray)
-}
-
-func (w *Writer) writeLorentzIndex(l expr.LorentzIndex) {
-	w.openArray(literal.LorentzIndex)
-	w.writeToken(jsontext.String(l.Index))
-	if l.HasD {
-		w.writeToken(jsontext.String("D"))
+	w.openArray(headPair)
+	for _, s := range p.Slots() {
+		if s.Index() {
+			w.openArray(headLorentzIndex)
+			w.writeToken(jsontext.String(w.t.Name(s.ID())))
+		} else {
+			w.openArray(headMomentum)
+			w.writeArg(w.t.Value(s.ID()).(expr.Arg))
+		}
+		w.writeDimension(s.Dim())
+		w.writeToken(jsontext.EndArray)
 	}
 	w.writeToken(jsontext.EndArray)
 }
 
-func (w *Writer) writeMomentum(m expr.Momentum) {
-	w.openArray(literal.Momentum)
-	w.writeExpr(m.Source)
-	if m.HasD {
-		w.writeToken(jsontext.String("D"))
+func (w *Writer) writeDimension(d expr.Dimension) {
+	switch d {
+	case expr.DimD:
+		w.writeToken(jsontext.String(DimensionD))
+	case expr.DimDMinus4:
+		w.openArray(headPlus)
+		w.writeToken(jsontext.Int(-4))
+		w.writeToken(jsontext.String(DimensionD))
+		w.writeToken(jsontext.EndArray)
 	}
-	w.writeToken(jsontext.EndArray)
 }
 
-func (w *Writer) writeArray(name string, nodes ...expr.Expr) {
+func (w *Writer) writeArray(name string, args ...expr.Arg) {
 	w.openArray(name)
-	for _, n := range nodes {
-		w.writeExpr(n)
+	for _, a := range args {
+		w.writeArg(a)
 	}
 	w.writeToken(jsontext.EndArray)
+}
+
+func (w *Writer) writeArg(a expr.Arg) {
+	if a.Expr == nil {
+		w.writePair(a.Pair)
+		return
+	}
+	w.writeExpr(a.Expr)
 }
 
 func (w *Writer) writeToken(t jsontext.Token) {

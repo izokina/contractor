@@ -1,130 +1,132 @@
 package contract
 
 import (
-	"cmp"
 	"slices"
 
 	"github.com/izokina/contractor/pkg/pipeline/eval"
 	"github.com/izokina/contractor/pkg/pipeline/expr"
+	"github.com/izokina/contractor/pkg/pipeline/ident"
 )
 
 type Contractor struct {
-	indexPairs map[string]expr.Pair
+	indexPairs map[ident.ID]expr.Pair
 
 	coeff expr.Scalar
 	pairs []expr.Pair
 
-	lorentz  []expr.LorentzIndex
-	momentum []expr.Momentum
+	indices []expr.Slot
+	momenta []expr.Slot
 
-	calc       *eval.Calculator
-	dScalar    expr.Scalar
-	fourScalar expr.Scalar
+	calc   *eval.Calculator
+	traces [expr.DimD + 1]expr.Scalar
 }
 
-func NewContractor() *Contractor {
-	atomD := expr.NewAtom("D")
-	return &Contractor{
-		indexPairs: make(map[string]expr.Pair),
+// NewContractor returns a contractor whose traces give d, the parser's symbol
+// D, in D and D-4 dimensions.
+func NewContractor(d *expr.Symbol) *Contractor {
+	dim := []expr.Factor{{Node: d, Exp: 1}}
+	c := &Contractor{
+		indexPairs: make(map[ident.ID]expr.Pair),
 		calc:       eval.NewCalculator(),
-		dScalar: expr.Scalar{Monomials: []expr.Monomial{{
-			Coeff:   expr.OneComplex,
-			Opaques: []expr.Opaque{{Signature: "\"D\"\n", Val: atomD}},
-		}}},
-		fourScalar: expr.Scalar{Monomials: []expr.Monomial{{
-			Coeff: expr.NewComplex(expr.NewRational(4), expr.NewRational(0)),
-		}}},
 	}
+	c.traces[expr.Dim4] = expr.Scalar{Monomials: []expr.Monomial{{Coeff: integer(4)}}}
+	c.traces[expr.DimD] = expr.Scalar{Monomials: []expr.Monomial{{Coeff: expr.OneComplex, Opaques: dim}}}
+	c.traces[expr.DimDMinus4] = expr.Scalar{Monomials: []expr.Monomial{{Coeff: integer(-4)}, {Coeff: expr.OneComplex, Opaques: dim}}}
+	return c
 }
 
-func (c *Contractor) ContractAndNormalize(term expr.Term) expr.Term {
+func integer(n int32) expr.Complex {
+	return expr.NewComplex(expr.NewRational(n), expr.NewRational(0))
+}
+
+// ContractAndNormalize contracts the term's indices, and reports whether the
+// term survives: it vanishes when a contraction joins 4 and D-4 dimensions.
+// The term's Pairs are valid until the next call.
+func (c *Contractor) ContractAndNormalize(term expr.Term) (expr.Term, bool) {
 	c.coeff = expr.OneScalar
 	c.pairs = c.pairs[:0]
 
+	vanishes := false
 	for _, pair := range term.Pairs {
-		c.addPair(pair)
+		if !c.addPair(pair) {
+			vanishes = true
+			break
+		}
 	}
 	for _, pair := range c.indexPairs {
 		c.pairs = append(c.pairs, pair)
-		for _, l := range pair.Lorentz {
-			delete(c.indexPairs, l.Signature)
+		s := pair.Slots()
+		for _, l := range s[:pair.Indices()] {
+			delete(c.indexPairs, l.ID())
 		}
 	}
-	term.Pairs = append(make([]expr.Pair, 0, len(c.pairs)), c.pairs...)
+	// Each Pair adds at most two entries.
+	if 2*len(term.Pairs) > eval.ScratchLimit {
+		c.indexPairs = make(map[ident.ID]expr.Pair)
+	}
+	if vanishes {
+		return term, false
+	}
+	term.Pairs = c.pairs
 	term.Coeff = c.calc.Mul(term.Coeff, c.coeff)
-
-	slices.SortFunc(term.Pairs, func(l, r expr.Pair) int {
-		c := cmp.Compare(len(l.Momentum), len(r.Momentum))
-		if c != 0 {
-			return c
-		}
-		for i := range len(l.Lorentz) {
-			c = cmp.Compare(l.Lorentz[i].Signature, r.Lorentz[i].Signature)
-			if c != 0 {
-				return c
-			}
-		}
-		for i := range len(l.Momentum) {
-			c = cmp.Compare(l.Momentum[i].Signature, r.Momentum[i].Signature)
-			if c != 0 {
-				return c
-			}
-		}
-		return 0
-	})
-
-	return term
+	slices.Sort(term.Pairs)
+	return term, true
 }
 
-func (c *Contractor) addPair(pair expr.Pair) {
-	c.lorentz = append(c.lorentz[:0], pair.Lorentz...)
-	c.momentum = append(c.momentum[:0], pair.Momentum...)
+// addPair contracts pair with the Pairs that share an index name with it, and
+// reports whether the term survives. The Pair they make spans the dimensions
+// that all of them span, in both slots; a term whose Pairs share none
+// vanishes.
+func (c *Contractor) addPair(pair expr.Pair) bool {
+	s, n := pair.Slots(), pair.Indices()
+	c.indices = append(c.indices[:0], s[:n]...)
+	c.momenta = append(c.momenta[:0], s[n:]...)
+	dim := pair.Dim()
 
-	for i := 0; i < len(c.lorentz); {
-		signature := c.lorentz[i].Signature
-		oldPair, ok := c.indexPairs[signature]
+	for i := 0; i < len(c.indices); {
+		name := c.indices[i].ID()
+		oldPair, ok := c.indexPairs[name]
 		if !ok {
 			i++
 			continue
 		}
+		if dim &= oldPair.Dim(); dim == 0 {
+			return false
+		}
 
-		j := len(c.lorentz) - 1
-		c.lorentz[i] = c.lorentz[j]
-		c.lorentz = c.lorentz[:j]
+		j := len(c.indices) - 1
+		c.indices[i] = c.indices[j]
+		c.indices = c.indices[:j]
 
-		for _, l := range oldPair.Lorentz {
-			delete(c.indexPairs, l.Signature)
-			if l.Signature != signature {
-				c.lorentz = append(c.lorentz, l)
+		old, m := oldPair.Slots(), oldPair.Indices()
+		for _, l := range old[:m] {
+			delete(c.indexPairs, l.ID())
+			if l.ID() != name {
+				c.indices = append(c.indices, l)
 			}
 		}
-		for _, m := range oldPair.Momentum {
-			c.momentum = append(c.momentum, m)
-		}
+		c.momenta = append(c.momenta, old[m:]...)
 	}
 
-	if len(c.lorentz) == 2 && c.lorentz[0].Signature == c.lorentz[1].Signature {
-		if c.lorentz[0].HasD {
-			c.coeff = c.calc.Mul(c.coeff, c.dScalar)
-		} else {
-			c.coeff = c.calc.Mul(c.coeff, c.fourScalar)
-		}
-		return
+	if len(c.indices) == 2 && c.indices[0].ID() == c.indices[1].ID() {
+		c.coeff = c.calc.Mul(c.coeff, c.traces[dim])
+		return true
 	}
 
-	if len(c.lorentz) == 2 && c.lorentz[0].Signature > c.lorentz[1].Signature {
-		c.lorentz[0], c.lorentz[1] = c.lorentz[1], c.lorentz[0]
+	// Contraction keeps two slots: a matched index takes the place of the
+	// other slot of its partner. Both span the meet, and two of a kind go in
+	// value order.
+	copy(s[copy(s[:], c.indices):], c.momenta)
+	a, b := s[0].WithDim(dim), s[1].WithDim(dim)
+	if a.Index() == b.Index() && a > b {
+		a, b = b, a
 	}
-	if len(c.momentum) == 2 && c.momentum[0].Signature > c.momentum[1].Signature {
-		c.momentum[0], c.momentum[1] = c.momentum[1], c.momentum[0]
+	pair = expr.NewPair(a, b)
+	for _, l := range c.indices {
+		c.indexPairs[l.ID()] = pair
 	}
-	pair = expr.Pair{}
-	pair.Lorentz = append(pair.Lorentz, c.lorentz...)
-	pair.Momentum = append(pair.Momentum, c.momentum...)
-	for _, l := range c.lorentz {
-		c.indexPairs[l.Signature] = pair
-	}
-	if len(c.lorentz) == 0 {
+	if len(c.indices) == 0 {
 		c.pairs = append(c.pairs, pair)
 	}
+	return true
 }

@@ -30,6 +30,20 @@ func (c Complex) Mul(d Complex) Complex {
 	return Complex{Re: ac.Sub(bd), Im: ad.Add(bc)}
 }
 
+// Pow returns c^n for n > 0.
+func (c Complex) Pow(n int32) Complex {
+	r := OneComplex
+	for {
+		if n&1 != 0 {
+			r = r.Mul(c)
+		}
+		if n >>= 1; n == 0 {
+			return r
+		}
+		c = c.Mul(c)
+	}
+}
+
 // Inverse returns 1/c. ok is false when c is zero.
 // 1/(a+bi) = (a - bi) / (a² + b²)
 func (c Complex) Inverse() (Complex, bool) {

@@ -1,116 +1,103 @@
-// Package eval folds an Expr tree into a Scalar by walking the expanded
-// sum-of-monomials and grouping like terms by canonical opaque-slice
-// signature.
+// Package eval folds a scalar Expr into a Scalar, multiplies Scalars, and
+// merges monomials and terms by their words of factors.
 package eval
 
 import (
-	"bytes"
-	"cmp"
+	"math"
 	"slices"
-	"unsafe"
 
-	"github.com/izokina/contractor/pkg/pipeline/codec"
 	"github.com/izokina/contractor/pkg/pipeline/expr"
 )
 
-// Calculator combines two Scalars term-by-term, grouping by canonical
-// opaque-slice signature and folding coefficients in the Complex ring.
-// Methods reuse internal scratch buffers; not safe for concurrent use.
+// Calculator multiplies Scalars. Not safe for concurrent use.
 type Calculator struct {
-	groups map[string]*expr.Monomial
-	keys   []string
-	opBuf  []expr.Opaque
-	sigBuf bytes.Buffer
-	signer codec.Signer
+	sum *Sum
+	ops []expr.Factor
 }
 
-// NewCalculator returns an empty Calculator.
 func NewCalculator() *Calculator {
-	return &Calculator{groups: make(map[string]*expr.Monomial)}
+	return &Calculator{sum: NewSum()}
 }
 
-// Add returns a + b.
-func (c *Calculator) Add(a, b expr.Scalar) expr.Scalar {
-	c.reset()
-	c.foldMonomials(a.Monomials)
-	c.foldMonomials(b.Monomials)
-	return c.materialize()
+// Buffer holds a product that MulTo writes. The zero value is ready to use.
+type Buffer struct {
+	monomials []expr.Monomial
+	factors   []expr.Factor
 }
 
-// Mul returns a * b.
+// Mul returns a * b, which may share slices with a and b.
 func (c *Calculator) Mul(a, b expr.Scalar) expr.Scalar {
-	c.reset()
+	var buf Buffer
+	return c.MulTo(&buf, a, b)
+}
+
+// MulTo returns a * b, which may share slices with a and b, and may lie in
+// buf, valid until buf is written again. It writes only into buf, where
+// neither a nor b may lie.
+func (c *Calculator) MulTo(buf *Buffer, a, b expr.Scalar) expr.Scalar {
+	switch {
+	case isOne(a):
+		return b
+	case isOne(b):
+		return a
+	case len(b.Monomials) == 1:
+		return buf.scale(a, b.Monomials[0])
+	case len(a.Monomials) == 1:
+		return buf.scale(b, a.Monomials[0])
+	}
 	for _, ma := range a.Monomials {
 		for _, mb := range b.Monomials {
-			c.opBuf = c.opBuf[:0]
-			c.opBuf = append(c.opBuf, ma.Opaques...)
-			c.opBuf = append(c.opBuf, mb.Opaques...)
-			c.sortOpBuf()
-			c.foldBuf(ma.Coeff.Mul(mb.Coeff))
+			c.ops = mergeOpaques(c.ops[:0], ma.Opaques, mb.Opaques)
+			c.sum.AddSorted(ma.Coeff.Mul(mb.Coeff), c.ops)
 		}
 	}
-	return c.materialize()
+	return c.sum.Scalar()
 }
 
-func (c *Calculator) reset() {
-	clear(c.groups)
-}
-
-func (c *Calculator) foldMonomials(monomials []expr.Monomial) {
-	for _, m := range monomials {
-		c.opBuf = append(c.opBuf[:0], m.Opaques...)
-		c.sortOpBuf()
-		c.foldBuf(m.Coeff)
+// scale multiplies each monomial of s by f. Below the bound of mergeOpaques
+// the words of s's monomials stay distinct, and no coefficient becomes zero,
+// so nothing merges; past it two words can meet, and the Sum that takes the
+// result merges them.
+func (buf *Buffer) scale(s expr.Scalar, f expr.Monomial) expr.Scalar {
+	buf.monomials = slices.Grow(buf.monomials[:0], len(s.Monomials))
+	buf.factors = buf.factors[:0]
+	for _, m := range s.Monomials {
+		buf.monomials = append(buf.monomials, expr.Monomial{Coeff: m.Coeff.Mul(f.Coeff), Opaques: buf.merged(m.Opaques, f.Opaques)})
 	}
+	return expr.Scalar{Monomials: buf.monomials}
 }
 
-// foldBuf folds (coeff, c.opBuf) into c.groups, summing coefficients on
-// signature collision. Caller must have sorted c.opBuf.
-//
-// signature() returns an unsafe view of c.sigBuf valid only until the next
-// mutation; the lookup must finish before any further write to c.sigBuf.
-// On insert we materialise a real string copy as the map key.
-func (c *Calculator) foldBuf(coeff expr.Complex) {
-	sig := c.signature()
-	if existing, ok := c.groups[sig]; ok {
-		existing.Coeff = existing.Coeff.Add(coeff)
-		return
+func isOne(s expr.Scalar) bool {
+	return len(s.Monomials) == 1 && s.Monomials[0].Coeff == expr.OneComplex && len(s.Monomials[0].Opaques) == 0
+}
+
+func (buf *Buffer) merged(a, b []expr.Factor) []expr.Factor {
+	switch {
+	case len(b) == 0:
+		return a
+	case len(a) == 0:
+		return b
 	}
-	ops := append(make([]expr.Opaque, 0, len(c.opBuf)), c.opBuf...)
-	c.groups[string(c.sigBuf.Bytes())] = &expr.Monomial{Coeff: coeff, Opaques: ops}
+	from := len(buf.factors)
+	buf.factors = mergeOpaques(slices.Grow(buf.factors, len(a)+len(b)), a, b)
+	return buf.factors[from:]
 }
 
-func (c *Calculator) sortOpBuf() {
-	slices.SortFunc(c.opBuf, func(a, b expr.Opaque) int {
-		return cmp.Compare(a.Signature, b.Signature)
-	})
-}
-
-func (c *Calculator) signature() string {
-	c.sigBuf.Reset()
-	for i, o := range c.opBuf {
-		if i > 0 {
-			c.sigBuf.WriteByte('\x00')
+// mergeOpaques appends the product of the factors of a and b, each in key
+// order, to dst in key order: the exponents of a node add, unless their sum
+// would pass the int32 range, where the two stay apart.
+func mergeOpaques(dst, a, b []expr.Factor) []expr.Factor {
+	for len(a) != 0 && len(b) != 0 {
+		ka, kb := expr.KeyOf(a[0].Node), expr.KeyOf(b[0].Node)
+		switch {
+		case kb < ka:
+			dst, b = append(dst, b[0]), b[1:]
+		case ka == kb && a[0].Exp <= math.MaxInt32-b[0].Exp:
+			dst = append(dst, expr.Factor{Node: a[0].Node, Exp: a[0].Exp + b[0].Exp})
+			a, b = a[1:], b[1:]
+		default:
+			dst, a = append(dst, a[0]), a[1:]
 		}
-		c.sigBuf.WriteString(o.Signature)
 	}
-	b := c.sigBuf.Bytes()
-	return unsafe.String(unsafe.SliceData(b), len(b))
-}
-
-func (c *Calculator) materialize() expr.Scalar {
-	c.keys = c.keys[:0]
-	for k := range c.groups {
-		c.keys = append(c.keys, k)
-	}
-	slices.Sort(c.keys)
-	out := make([]expr.Monomial, 0, len(c.keys))
-	for _, k := range c.keys {
-		g := c.groups[k]
-		if g.Coeff.IsZero() {
-			continue
-		}
-		out = append(out, *g)
-	}
-	return expr.Scalar{Monomials: out}
+	return append(append(dst, a...), b...)
 }
