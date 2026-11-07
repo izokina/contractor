@@ -4,21 +4,28 @@ import "math/big"
 
 // int32FromExpr returns the int32 value when n is an atom holding int32.
 func int32FromExpr(n Expr) (int32, bool) {
-	if a, ok := n.(*Atom); ok {
-		if v, ok := a.Value.(int32); ok {
-			return v, true
-		}
+	if a, ok := n.(*Atom); ok && a.Big == nil && a.Text == nil {
+		return a.Int, true
 	}
 	return 0, false
 }
 
 func bigIntFromExpr(n Expr) (*big.Int, bool) {
-	if a, ok := n.(*Atom); ok {
-		if v, ok := a.Value.(*big.Int); ok {
-			return v, true
-		}
+	if a, ok := n.(*Atom); ok && a.Big != nil {
+		return a.Big, true
 	}
 	return nil, false
+}
+
+func isInteger(n Expr) bool {
+	a, ok := n.(*Atom)
+	return ok && a.Text == nil
+}
+
+// isRational reports whether n is an integer atom or a Rational of two.
+func isRational(n Expr) bool {
+	r, ok := n.(*RationalExpr)
+	return isInteger(n) || ok && isInteger(r.Num.Expr) && isInteger(r.Den.Expr)
 }
 
 func intFromExpr(n Expr) (*big.Int, bool) {
@@ -39,19 +46,19 @@ func rationalFromExpr(n Expr) (Rational, bool) {
 	}
 	if r, ok := n.(*RationalExpr); ok {
 		// The common int32/int32 case stays off math/big.
-		if num, ok := int32FromExpr(r.Num); ok {
-			if den, ok := int32FromExpr(r.Den); ok {
+		if num, ok := int32FromExpr(r.Num.Expr); ok {
+			if den, ok := int32FromExpr(r.Den.Expr); ok {
 				if den == 0 {
 					return Rational{}, false
 				}
 				return reduce64(int64(num), int64(den)), true
 			}
 		}
-		num, ok := intFromExpr(r.Num)
+		num, ok := intFromExpr(r.Num.Expr)
 		if !ok {
 			return Rational{}, false
 		}
-		den, ok := intFromExpr(r.Den)
+		den, ok := intFromExpr(r.Den.Expr)
 		if !ok || den.Sign() == 0 {
 			return Rational{}, false
 		}
@@ -68,11 +75,11 @@ func ComplexFromExpr(n Expr) (Complex, bool) {
 		return Complex{Re: r, Im: NewRational(0)}, true
 	}
 	if c, ok := n.(*ComplexExpr); ok {
-		re, ok := rationalFromExpr(c.Re)
+		re, ok := rationalFromExpr(c.Re.Expr)
 		if !ok {
 			return Complex{}, false
 		}
-		im, ok := rationalFromExpr(c.Im)
+		im, ok := rationalFromExpr(c.Im.Expr)
 		if !ok {
 			return Complex{}, false
 		}

@@ -1,6 +1,7 @@
 package expr
 
 import (
+	"encoding/binary"
 	"math"
 	"math/big"
 )
@@ -89,6 +90,31 @@ func (r Rational) IsZero() bool {
 		return r.big.Sign() == 0
 	}
 	return r.num == 0
+}
+
+func AppendRational(b []byte, r Rational) []byte {
+	if r.big == nil {
+		b = binary.AppendVarint(append(b, 0), int64(r.num))
+		return binary.AppendUvarint(b, uint64(r.den))
+	}
+	text, _ := r.big.MarshalText()
+	b = binary.AppendUvarint(append(b, 1), uint64(len(text)))
+	return append(b, text...)
+}
+
+// ReadRational returns the Rational that AppendRational wrote at the start of
+// b, and the rest of b.
+func ReadRational(b []byte) (Rational, []byte) {
+	if b[0] == 0 {
+		num, n := binary.Varint(b[1:])
+		den, m := binary.Uvarint(b[1+n:])
+		return Rational{num: int32(num), den: int32(den)}, b[1+n+m:]
+	}
+	size, n := binary.Uvarint(b[1:])
+	text := b[1+n : 1+n+int(size)]
+	q := new(big.Rat)
+	q.UnmarshalText(text)
+	return Rational{big: q}, b[1+n+int(size):]
 }
 
 func (r Rational) toBigRat() *big.Rat {
