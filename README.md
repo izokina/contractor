@@ -60,7 +60,7 @@ See [docs/samples.md](docs/samples.md) for the worked examples and *Known implem
 
 ## Install
 
-Each [release](https://github.com/izokina/contractor/releases) carries binaries for Linux, macOS and Windows, on amd64 and arm64, named `contractor-<os>-<arch>` (`.exe` on Windows). They are built without cgo, so they need nothing else installed.
+A tagged version is published as a [release](https://github.com/izokina/contractor/releases) with binaries for Linux, macOS and Windows, on amd64 and arm64, named `contractor-<os>-<arch>` (`.exe` on Windows). They are built without cgo, so they need nothing else installed.
 
 From the source, with Go 1.27 or later:
 

@@ -192,9 +192,3 @@ Two values compare equal only when they render identically, so the whole output 
 The walk is a state machine with no callback: the worker pulls each term with `Next`, and the walker keeps its state on its own stack rather than in closures, so the worker can stop at any term.
 
 A factor is taken in one of two ways. Streamed, it holds one of its terms at a time, and is walked again for each combination of the slower digits of its product. Multiplied out, it holds all its terms, merged and contracted as far as they close inside it. The walk multiplies out only what can merge: a factor that closes an index name inside itself, a group of factors that share the names they leave open, and the copies of a power. It streams every other factor, so a product of sums that share no names, nested at any depth, is never held whole. What merges inside a group merges before it meets the rest, so a chain of sums merges link by link rather than as the product of its links (sample 312). What merges only across a sum, such as a chain written in Horner form, is walked term by term ([known-limitations.md](known-limitations.md) §Walk memory and time). The rule is `Walker.product`; another algorithm replaces it there.
-
----
-
-## Naming convention for strategy interfaces
-
-Strategy interfaces use Go-idiomatic role nouns, not Java-style suffixes. The closest stdlib analogues — `go/ast.Walk(v Visitor, node Node)`, `path/filepath.WalkDir`, `database/sql.Driver` — name the strategy with a noun describing what it *is* in the algorithm's vocabulary. Avoid `Delegate` / `Listener` / `Strategy` / `Handler` for new strategy interfaces.
