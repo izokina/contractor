@@ -1,5 +1,7 @@
 # Performance Report — 422 MB ExpressionJSON Workload
 
+*Historical: this report describes the code as it was in May 2026, at version 0.1.0. Version 0.3.0 reworked the pipeline, so the stages, identifiers, flags and figures below are those of the old code.*
+
 *Captured 2026-05-27 against a 422 MB ExpressionJSON workload (stdin) producing 136 MB on stdout.*
 
 Workload: stdin 422 MB → stdout 136 MB.
