@@ -161,6 +161,6 @@ The second term's repeated `mu` contracts and the merger collapses `3 * 4 → 12
 go tool pprof -top -alloc_space mem.prof
 ```
 
-Last captured shape (`test-input-2.dat`): GC scanning ~half of CPU; parser drove about half of heap allocation, contractor and the rest cheap. Start optimization in the parser, but rerun before relying on these numbers.
+Last captured shape (version 0.3.0, 8 threads). On a large expanded input, a root sum of small products, the parser takes about half of the CPU and contraction about a sixth; merging, the flush and garbage collection take about 5% each or less. On a factored input, a root product of sums, parsing is negligible: contraction takes about a third, merging a fifth and the flush a seventh, most of it writing. Rerun before relying on these numbers.
 
 `scripts/bench/run.py` runs generated inputs that reproduce the known performance cliffs (`scripts/bench/gen.py` lists them), or any `--input FILE`, to find a case that hangs, blows up memory or gives a wrong result; it is not a source of design decisions, and not part of `scripts/run-tests.sh`. `--compare REF` checks that stdout is byte-identical to that of `REF`, a build of the commit before a change: it certifies an output-preserving change on inputs too large to be fixtures.

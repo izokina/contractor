@@ -1,6 +1,6 @@
 # FeynGrav Index Contractor
 
-Go implementation of tensor index contraction for FeynGrav, roughly 100× faster than the native Mathematica version. Takes a Mathematica expression serialized as ExpressionJSON on stdin, contracts all repeated Lorentz indices, groups terms by remaining index structure, and writes the result to stdout.
+Go implementation of tensor index contraction for FeynGrav. When last compared, before version 0.1.0, it was roughly 100× faster than the native Mathematica version; version 0.3.0 is faster again, and on FeynGrav's amplitudes it outruns FORM. Measured benchmarks are not published yet. Takes a Mathematica expression serialized as ExpressionJSON on stdin, contracts all repeated Lorentz indices, groups terms by remaining index structure, and writes the result to stdout.
 
 ---
 
